@@ -1,1 +1,3 @@
+wordlists/*.txt
 target
+config.toml

@@ -1,16 +1,29 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
+use clap::Parser;
+use color_eyre::{eyre::eyre, Result};
 use eframe::epaint::text::{FontInsert, InsertFontFamily};
 use egui::{
     scroll_area::{ScrollBarVisibility, ScrollSource},
     Align, Color32, FontFamily, FontId, Layout, Modal, Pos2, Rect, RichText,
     TextStyle, Vec2,
 };
-use std::{collections::VecDeque, sync::mpsc, time::Duration};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::VecDeque,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
+};
+use tokio::sync::{mpsc, oneshot};
+
+#[macro_use]
+extern crate tracing;
 
 mod config;
 mod input;
+mod listener;
 
 const NOTO_SANS: &[u8] = include_bytes!("../fonts/NotoSans-Regular.ttf");
 
@@ -21,17 +34,90 @@ const MAX_FONT: f32 = 400.0;
 const MIN_SUBTITLE_HEIGHT: f32 = 0.1;
 const MAX_SUBTITLE_HEIGHT: f32 = 0.9;
 
-fn main() -> eframe::Result {
-    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+const PREFIX_RECOGNISING: &str = "RECOGNIZING: ";
+const PREFIX_RECOGNISED: &str = "RECOGNIZED: ";
+// https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=stt
+const LANGUAGE_OPTIONS: &[&str] = &["en-GB", "en-IE", "en-US", "ja-JP"];
 
-    let (tx, rx) = mpsc::channel();
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+enum Line {
+    Recognising(String),
+    Recognised(String),
+}
 
-    std::thread::spawn(move || background_sender(tx));
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize)]
+enum RunState {
+    #[default]
+    Stopped,
+    Running,
+    Test,
+}
+
+#[derive(Debug)]
+enum ControlMessage {
+    SetState(RunState),
+    GetState(oneshot::Sender<RunState>),
+    SetLanguage(Arc<str>),
+    GetLanguage(oneshot::Sender<Language>),
+    SetWordlist(Option<Arc<str>>),
+    GetWordlist(oneshot::Sender<Wordlist>),
+}
+
+impl FromStr for Line {
+    type Err = color_eyre::Report;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        if let Some(line) = s.strip_prefix(PREFIX_RECOGNISING) {
+            Ok(Self::Recognising(line.into()))
+        } else if let Some(line) = s.strip_prefix(PREFIX_RECOGNISED) {
+            Ok(Self::Recognised(line.into()))
+        } else {
+            Err(eyre!("Invalid input"))
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Language {
+    options: Vec<Arc<str>>,
+    current: Arc<str>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Wordlist {
+    options: Vec<Arc<str>>,
+    current: Option<Arc<str>>,
+}
+
+#[derive(Parser)]
+struct Args {
+    #[clap(long, help = "Path to config file")]
+    config: PathBuf,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    color_eyre::install()?;
+    init_tracing();
+
+    let args = Args::parse();
+    let config = Config::load(&args.config)?;
+
+    let (tx, rx) = mpsc::channel(10);
+    let (control_tx, control_rx) = mpsc::channel(5);
+
+    info!("Starting captioninator");
+    let auth = match (config.region.clone(), config.key.clone()) {
+        (Some(region), Some(key)) => listener::Auth { region, key },
+        _ => Err(eyre!("Region and key are required for Azure listener"))?,
+    };
+    listener::start(tx.clone(), control_rx, auth, config.clone());
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_fullscreen(true),
         ..Default::default()
     };
+
+    let app = MyApp::new(rx, control_tx).await?;
 
     eframe::run_native(
         "egui example: custom font",
@@ -62,9 +148,28 @@ fn main() -> eframe::Result {
                 style.text_styles = text_styles;
             });
             catppuccin_egui::set_theme(&cc.egui_ctx, catppuccin_egui::MOCHA);
-            Ok(Box::new(MyApp::new(cc, rx)))
+
+            replace_fonts(&cc.egui_ctx);
+            add_font(&cc.egui_ctx);
+
+            Ok(Box::new(app))
         }),
     )
+    .unwrap();
+    Ok(())
+}
+
+fn init_tracing() {
+    use tracing_subscriber::{filter::LevelFilter, EnvFilter};
+
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::DEBUG.into())
+                .from_env_lossy(),
+        )
+        .with_line_number(true)
+        .init();
 }
 
 // Demonstrates how to add a font to the existing ones
@@ -117,7 +222,8 @@ fn replace_fonts(ctx: &egui::Context) {
 
 struct MyApp {
     text_buffer: VecDeque<String>,
-    rx: mpsc::Receiver<String>,
+    active_line: Option<String>,
+    rx: mpsc::Receiver<Line>,
     state: State,
     fullscreen_font_size: f32,
     subtitle_font_size: f32,
@@ -125,6 +231,10 @@ struct MyApp {
     dark_mode_enabled: bool,
     dark_mode_requested: bool,
     display_mode: DisplayMode,
+    control_tx: mpsc::Sender<ControlMessage>,
+    run_state: RunState,
+    wordlist_options: Vec<Arc<str>>,
+    wordlist: Option<Arc<str>>,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -144,15 +254,22 @@ impl DisplayMode {
 }
 
 impl MyApp {
-    fn new(
-        cc: &eframe::CreationContext<'_>,
-        rx: mpsc::Receiver<String>,
-    ) -> Self {
-        replace_fonts(&cc.egui_ctx);
-        add_font(&cc.egui_ctx);
+    async fn new(
+        rx: mpsc::Receiver<Line>,
+        control_tx: mpsc::Sender<ControlMessage>,
+    ) -> Result<Self> {
+        let wordlist = {
+            let (tx, rx) = oneshot::channel();
+            control_tx
+                .send(ControlMessage::GetWordlist(tx))
+                .await
+                .unwrap();
+            rx.await?
+        };
 
-        Self {
+        Ok(Self {
             text_buffer: VecDeque::with_capacity(LINE_BUFFER_SIZE * 2),
+            active_line: None,
             rx,
             state: State::default(),
             fullscreen_font_size: 100.0,
@@ -161,7 +278,11 @@ impl MyApp {
             dark_mode_enabled: true,
             dark_mode_requested: true,
             display_mode: DisplayMode::default(),
-        }
+            control_tx,
+            run_state: RunState::default(),
+            wordlist_options: wordlist.options,
+            wordlist: wordlist.current,
+        })
     }
 
     const fn font_size(&self) -> f32 {
@@ -177,6 +298,41 @@ impl MyApp {
             DisplayMode::Subtitle => &mut self.subtitle_font_size,
         }
     }
+
+    fn toggle_running(&mut self) {
+        self.run_state = match self.run_state {
+            RunState::Running | RunState::Test => RunState::Stopped,
+            RunState::Stopped => RunState::Running,
+        };
+        if let Err(err) = self
+            .control_tx
+            .try_send(ControlMessage::SetState(self.run_state))
+        {
+            error!("{err}");
+        }
+    }
+
+    fn toggle_test_mode(&mut self) {
+        self.run_state = match self.run_state {
+            RunState::Running | RunState::Test => RunState::Stopped,
+            RunState::Stopped => RunState::Test,
+        };
+        if let Err(err) = self
+            .control_tx
+            .try_send(ControlMessage::SetState(self.run_state))
+        {
+            error!("{err}");
+        }
+    }
+
+    fn update_wordlist(&mut self) {
+        if let Err(err) = self
+            .control_tx
+            .try_send(ControlMessage::SetWordlist(self.wordlist.clone()))
+        {
+            error!("{err}");
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Default)]
@@ -189,12 +345,20 @@ enum State {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         while let Ok(line) = self.rx.try_recv() {
-            self.text_buffer.push_back(line);
+            match line {
+                Line::Recognising(line) => {
+                    self.active_line = Some(line);
+                }
+                Line::Recognised(line) => {
+                    self.text_buffer.push_back(line);
+                    self.active_line.take();
+                }
+            }
         }
 
         let limit = match self.display_mode {
             DisplayMode::Fullscreen => LINE_BUFFER_SIZE,
-            DisplayMode::Subtitle => 2,
+            DisplayMode::Subtitle => 4,
         };
         while self.text_buffer.len() > limit {
             self.text_buffer.pop_front();
@@ -223,7 +387,9 @@ impl eframe::App for MyApp {
                 .auto_shrink(false)
                 .show(ui, |ui| {
                     ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                        for line in &self.text_buffer {
+                        for line in
+                            self.text_buffer.iter().chain(&self.active_line)
+                        {
                             ui.label(
                                 RichText::new(line).size(self.font_size()),
                             );
@@ -262,9 +428,16 @@ impl eframe::App for MyApp {
     }
 }
 
-fn background_sender(tx: mpsc::Sender<String>) {
-    for repeat in 1.. {
-        tx.send("game ".repeat(repeat)).unwrap();
-        std::thread::sleep(Duration::from_millis(500));
+#[derive(Clone, Deserialize)]
+pub struct Config {
+    pub region: Option<String>,
+    pub key: Option<String>,
+    pub wordlist_dir: Option<PathBuf>,
+}
+
+impl Config {
+    pub fn load(path: &Path) -> Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        toml::de::from_str(&content).map_err(Into::into)
     }
 }

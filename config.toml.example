@@ -1,0 +1,5 @@
+# Azure speech services region
+region = "uksouth"
+# Azure speech services key
+key = ""
+wordlist_dir = ""

@@ -1,5 +1,5 @@
 use crate::{
-    State, MAX_FONT, MAX_SUBTITLE_HEIGHT, MIN_FONT, MIN_SUBTITLE_HEIGHT,
+    MAX_FONT, MAX_SUBTITLE_HEIGHT, MIN_FONT, MIN_SUBTITLE_HEIGHT, State,
 };
 use egui::{Context, Key};
 
@@ -25,12 +25,20 @@ pub fn process(ctx: &Context, app: &mut crate::MyApp) {
         app.subtitle_height_proportion -= 0.1;
     }
 
-    if ctx.input(|i| i.key_pressed(Key::T)) {
+    if ctx.input(|i| i.key_pressed(Key::D)) {
         app.dark_mode_requested = !app.dark_mode_enabled;
     }
 
     if ctx.input(|i| i.key_pressed(Key::M)) {
         app.display_mode.swap();
+    }
+
+    if ctx.input(|i| i.key_pressed(Key::Space)) {
+        app.toggle_running();
+    }
+
+    if ctx.input(|i| i.key_pressed(Key::T)) {
+        app.toggle_test_mode();
     }
 
     *app.font_size_mut() = app.font_size().clamp(MIN_FONT, MAX_FONT);
