@@ -7,14 +7,18 @@ use eframe::epaint::text::{FontInsert, InsertFontFamily};
 use egui::{
     scroll_area::{ScrollBarVisibility, ScrollSource},
     Align, Color32, FontFamily, FontId, Layout, Modal, Pos2, Rect, RichText,
-    TextStyle, Vec2,
+    TextStyle, Vec2, ViewportBuilder, ViewportCommand, ViewportId,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
+    ops::DerefMut,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 use tokio::sync::{mpsc, oneshot};
 
@@ -113,7 +117,7 @@ async fn main() -> Result<()> {
     listener::start(tx.clone(), control_rx, auth, config.clone());
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_fullscreen(true),
+        viewport: ViewportBuilder::default().with_fullscreen(true),
         ..Default::default()
     };
 
@@ -224,6 +228,10 @@ struct MyApp {
     text_buffer: VecDeque<String>,
     active_line: Option<String>,
     rx: mpsc::Receiver<Line>,
+    control_state: Arc<Mutex<ControlState>>,
+}
+
+struct ControlState {
     state: State,
     fullscreen_font_size: f32,
     subtitle_font_size: f32,
@@ -235,56 +243,10 @@ struct MyApp {
     run_state: RunState,
     wordlist_options: Vec<Arc<str>>,
     wordlist: Option<Arc<str>>,
+    request_close: AtomicBool,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-enum DisplayMode {
-    #[default]
-    Fullscreen,
-    Subtitle,
-}
-
-impl DisplayMode {
-    fn swap(&mut self) {
-        *self = match self {
-            Self::Fullscreen => Self::Subtitle,
-            Self::Subtitle => Self::Fullscreen,
-        }
-    }
-}
-
-impl MyApp {
-    async fn new(
-        rx: mpsc::Receiver<Line>,
-        control_tx: mpsc::Sender<ControlMessage>,
-    ) -> Result<Self> {
-        let wordlist = {
-            let (tx, rx) = oneshot::channel();
-            control_tx
-                .send(ControlMessage::GetWordlist(tx))
-                .await
-                .unwrap();
-            rx.await?
-        };
-
-        Ok(Self {
-            text_buffer: VecDeque::with_capacity(LINE_BUFFER_SIZE * 2),
-            active_line: None,
-            rx,
-            state: State::default(),
-            fullscreen_font_size: 100.0,
-            subtitle_font_size: 50.0,
-            subtitle_height_proportion: 0.2,
-            dark_mode_enabled: true,
-            dark_mode_requested: true,
-            display_mode: DisplayMode::default(),
-            control_tx,
-            run_state: RunState::default(),
-            wordlist_options: wordlist.options,
-            wordlist: wordlist.current,
-        })
-    }
-
+impl ControlState {
     const fn font_size(&self) -> f32 {
         match self.display_mode {
             DisplayMode::Fullscreen => self.fullscreen_font_size,
@@ -335,6 +297,58 @@ impl MyApp {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+enum DisplayMode {
+    #[default]
+    Fullscreen,
+    Subtitle,
+}
+
+impl DisplayMode {
+    fn swap(&mut self) {
+        *self = match self {
+            Self::Fullscreen => Self::Subtitle,
+            Self::Subtitle => Self::Fullscreen,
+        }
+    }
+}
+
+impl MyApp {
+    async fn new(
+        rx: mpsc::Receiver<Line>,
+        control_tx: mpsc::Sender<ControlMessage>,
+    ) -> Result<Self> {
+        let wordlist = {
+            let (tx, rx) = oneshot::channel();
+            control_tx
+                .send(ControlMessage::GetWordlist(tx))
+                .await
+                .unwrap();
+            rx.await?
+        };
+
+        Ok(Self {
+            text_buffer: VecDeque::with_capacity(LINE_BUFFER_SIZE * 2),
+            active_line: None,
+            rx,
+            control_state: Arc::new(Mutex::new(ControlState {
+                state: State::default(),
+                fullscreen_font_size: 100.0,
+                subtitle_font_size: 50.0,
+                subtitle_height_proportion: 0.2,
+                dark_mode_enabled: true,
+                dark_mode_requested: true,
+                display_mode: DisplayMode::default(),
+                control_tx,
+                run_state: RunState::default(),
+                wordlist_options: wordlist.options,
+                wordlist: wordlist.current,
+                request_close: AtomicBool::default(),
+            })),
+        })
+    }
+}
+
 #[derive(PartialEq, Eq, Default)]
 enum State {
     #[default]
@@ -344,6 +358,15 @@ enum State {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.show_viewport_deferred(
+            ViewportId::from_hash_of("controls-window"),
+            ViewportBuilder::default().with_title("Caption controls"),
+            {
+                let control_state = Arc::clone(&self.control_state);
+                move |ctx, _| config::window(ctx, Arc::clone(&control_state))
+            },
+        );
+
         while let Ok(line) = self.rx.try_recv() {
             match line {
                 Line::Recognising(line) => {
@@ -356,7 +379,12 @@ impl eframe::App for MyApp {
             }
         }
 
-        let limit = match self.display_mode {
+        let mut control_state = self.control_state.lock().unwrap();
+        if control_state.request_close.load(Ordering::Relaxed) {
+            ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
+
+        let limit = match control_state.display_mode {
             DisplayMode::Fullscreen => LINE_BUFFER_SIZE,
             DisplayMode::Subtitle => 4,
         };
@@ -364,13 +392,14 @@ impl eframe::App for MyApp {
             self.text_buffer.pop_front();
         }
 
-        let max_height = match self.display_mode {
+        let max_height = match control_state.display_mode {
             DisplayMode::Fullscreen => f32::INFINITY,
             DisplayMode::Subtitle => {
-                ctx.screen_rect().height() * self.subtitle_height_proportion
+                ctx.screen_rect().height()
+                    * control_state.subtitle_height_proportion
             }
         };
-        let top = match self.display_mode {
+        let top = match control_state.display_mode {
             DisplayMode::Fullscreen => 0.0,
             DisplayMode::Subtitle => ctx.screen_rect().height() - max_height,
         };
@@ -391,30 +420,32 @@ impl eframe::App for MyApp {
                             self.text_buffer.iter().chain(&self.active_line)
                         {
                             ui.label(
-                                RichText::new(line).size(self.font_size()),
+                                RichText::new(line)
+                                    .size(control_state.font_size()),
                             );
                         }
                     });
                 });
         });
 
-        if self.state == State::Config {
+        if control_state.state == State::Config {
             Modal::new("config-modal".into())
-                .show(ctx, |ui| config::show(ui, self));
+                .show(ctx, |ui| config::show(ui, control_state.deref_mut()));
         }
 
-        input::process(ctx, self);
+        input::process(ctx, control_state.deref_mut());
 
-        let base_theme = if self.dark_mode_requested {
+        let base_theme = if control_state.dark_mode_requested {
             catppuccin_egui::MOCHA
         } else {
             catppuccin_egui::LATTE
         };
-        if self.dark_mode_enabled != self.dark_mode_requested {
+        if control_state.dark_mode_enabled != control_state.dark_mode_requested
+        {
             catppuccin_egui::set_theme(ctx, base_theme);
-            self.dark_mode_enabled = self.dark_mode_requested;
+            control_state.dark_mode_enabled = control_state.dark_mode_requested;
         }
-        let bg_fill = if self.display_mode == DisplayMode::Subtitle {
+        let bg_fill = if control_state.display_mode == DisplayMode::Subtitle {
             Color32::GREEN
         } else {
             base_theme.base

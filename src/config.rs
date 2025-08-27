@@ -3,8 +3,12 @@ use crate::{
     MIN_SUBTITLE_HEIGHT,
 };
 use egui::{Button, ComboBox, RichText, Slider, Ui};
+use std::{
+    ops::DerefMut,
+    sync::{atomic::Ordering, Arc, Mutex},
+};
 
-pub fn show(ui: &mut Ui, app: &mut crate::MyApp) {
+pub fn show(ui: &mut Ui, app: &mut crate::ControlState) {
     ui.heading(RichText::new("game").size(50.0));
 
     ui.add(
@@ -79,5 +83,30 @@ pub fn show(ui: &mut Ui, app: &mut crate::MyApp) {
         {
             app.toggle_test_mode();
         }
+    });
+
+    if ui.button("Exit").clicked() {
+        app.request_close.store(true, Ordering::Relaxed);
+    }
+}
+
+pub fn window(
+    ctx: &egui::Context,
+    control_state: Arc<Mutex<crate::ControlState>>,
+) {
+    if ctx.input(|input| input.viewport().close_requested()) {
+        control_state
+            .lock()
+            .unwrap()
+            .request_close
+            .store(true, Ordering::Relaxed);
+    }
+
+    let mut control_state = control_state.lock().unwrap();
+
+    crate::input::process(ctx, control_state.deref_mut());
+
+    egui::CentralPanel::default().show(ctx, |ui| {
+        show(ui, control_state.deref_mut());
     });
 }

@@ -1,9 +1,9 @@
 use crate::{
-    MAX_FONT, MAX_SUBTITLE_HEIGHT, MIN_FONT, MIN_SUBTITLE_HEIGHT, State,
+    State, MAX_FONT, MAX_SUBTITLE_HEIGHT, MIN_FONT, MIN_SUBTITLE_HEIGHT,
 };
 use egui::{Context, Key};
 
-pub fn process(ctx: &Context, app: &mut crate::MyApp) {
+pub fn process(ctx: &Context, app: &mut crate::ControlState) {
     if ctx.input(|i| i.key_pressed(Key::F1)) {
         app.state = State::Config;
     }
