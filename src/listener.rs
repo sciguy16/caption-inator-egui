@@ -1,6 +1,4 @@
-use crate::{
-    Config, ControlMessage, Language, Line, Result, RunState, Wordlist,
-};
+use crate::{Config, ControlMessage, Line, Result, RunState, Wordlist};
 use color_eyre::eyre::eyre;
 use std::{
     path::Path, process::Stdio, str::FromStr, sync::Arc, time::Duration,
@@ -99,9 +97,6 @@ async fn wait_for_transition(
     while let Some(msg) = control_rx.recv().await {
         match msg {
             ControlMessage::SetState(new_state) => return new_state,
-            ControlMessage::GetState(reply) => {
-                let _ = reply.send(RunState::Stopped);
-            }
             other => handle_lang_and_wordlist(other, setup_state, config),
         }
     }
@@ -183,10 +178,10 @@ async fn do_run(
                     _ => None,
                 };
 
-                if let Some(line) = line {
-                    if tx.try_send(line).is_err() {
+                if let Some(line) = line &&
+                     tx.try_send(line).is_err() {
                         warn!("Line channel full");
-                    }
+
                 }
             }
             msg = control_rx.recv() => {
@@ -201,10 +196,7 @@ async fn do_run(
                             return Ok(new_state);
                         }
                     }
-                    ControlMessage::GetState(reply) => {
-                        let _ = reply.send(RunState::Running);
-                    }
-                    other => {
+                                       other => {
                         handle_lang_and_wordlist(other, setup_state,config);
                     }
                 }
@@ -301,10 +293,7 @@ async fn run_test(
                             break new_state;
                         }
                     }
-                    ControlMessage::GetState(reply) => {
-                        let _ = reply.send(RunState::Test);
-                    }
-                    other => {
+                                       other => {
                         handle_lang_and_wordlist(other, setup_state,config);
                     }
                 }
@@ -320,23 +309,6 @@ fn handle_lang_and_wordlist(
     config: &Config,
 ) {
     match msg {
-        ControlMessage::GetLanguage(reply) => {
-            let _ = reply.send(Language {
-                options: crate::LANGUAGE_OPTIONS
-                    .iter()
-                    .copied()
-                    .map(Into::into)
-                    .collect(),
-                current: setup_state.language.clone(),
-            });
-        }
-        ControlMessage::SetLanguage(choice) => {
-            if crate::LANGUAGE_OPTIONS.contains(&choice.as_ref()) {
-                setup_state.language = choice;
-            } else {
-                warn!("Invalid language choice `{choice}`");
-            }
-        }
         ControlMessage::GetWordlist(reply) => {
             let options = config
                 .wordlist_dir

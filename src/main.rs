@@ -60,9 +60,6 @@ enum RunState {
 #[derive(Debug)]
 enum ControlMessage {
     SetState(RunState),
-    GetState(oneshot::Sender<RunState>),
-    SetLanguage(Arc<str>),
-    GetLanguage(oneshot::Sender<Language>),
     SetWordlist(Option<Arc<str>>),
     GetWordlist(oneshot::Sender<Wordlist>),
 }
@@ -78,12 +75,6 @@ impl FromStr for Line {
             Err(eyre!("Invalid input"))
         }
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Language {
-    options: Vec<Arc<str>>,
-    current: Arc<str>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
