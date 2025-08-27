@@ -371,6 +371,7 @@ impl eframe::App for MyApp {
         }
 
         let mut control_state = self.control_state.lock().unwrap();
+
         if control_state.request_close.load(Ordering::Relaxed) {
             ctx.send_viewport_cmd(ViewportCommand::Close);
         }
@@ -395,6 +396,29 @@ impl eframe::App for MyApp {
             DisplayMode::Subtitle => ctx.screen_rect().height() - max_height,
         };
 
+        input::process(ctx, control_state.deref_mut());
+
+        let base_theme = if control_state.dark_mode_requested {
+            catppuccin_egui::MOCHA
+        } else {
+            catppuccin_egui::LATTE
+        };
+        if control_state.dark_mode_enabled != control_state.dark_mode_requested
+        {
+            catppuccin_egui::set_theme(ctx, base_theme);
+            control_state.dark_mode_enabled = control_state.dark_mode_requested;
+        }
+
+        let bg_fill = if control_state.display_mode == DisplayMode::Subtitle {
+            Color32::GREEN
+        } else {
+            base_theme.base
+        };
+
+        // Override the panel fill for just the subtitles panel
+        ctx.style_mut(|styles| {
+            styles.visuals.panel_fill = bg_fill;
+        });
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.advance_cursor_after_rect(Rect::from_min_size(
                 Pos2::ZERO,
@@ -418,33 +442,15 @@ impl eframe::App for MyApp {
                     });
                 });
         });
+        // and then set it back afterwards
+        ctx.style_mut(|styles| {
+            styles.visuals.panel_fill = base_theme.base;
+        });
 
         if control_state.state == State::Config {
             Modal::new("config-modal".into())
                 .show(ctx, |ui| config::show(ui, control_state.deref_mut()));
         }
-
-        input::process(ctx, control_state.deref_mut());
-
-        let base_theme = if control_state.dark_mode_requested {
-            catppuccin_egui::MOCHA
-        } else {
-            catppuccin_egui::LATTE
-        };
-        if control_state.dark_mode_enabled != control_state.dark_mode_requested
-        {
-            catppuccin_egui::set_theme(ctx, base_theme);
-            control_state.dark_mode_enabled = control_state.dark_mode_requested;
-        }
-        let bg_fill = if control_state.display_mode == DisplayMode::Subtitle {
-            Color32::GREEN
-        } else {
-            base_theme.base
-        };
-        ctx.all_styles_mut(|styles| {
-            styles.visuals.window_fill = bg_fill;
-            styles.visuals.panel_fill = bg_fill;
-        });
 
         ctx.request_repaint();
     }
