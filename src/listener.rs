@@ -77,7 +77,7 @@ async fn start_inner(
                 {
                     Ok(state) => state,
                     Err(err) => {
-                        error!("{err}");
+                        error!("{err:?}");
                         RunState::Stopped
                     }
                 }

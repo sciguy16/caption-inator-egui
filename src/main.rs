@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
     ops::DerefMut,
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -86,7 +86,7 @@ struct Wordlist {
 #[derive(Parser)]
 struct Args {
     #[clap(long, help = "Path to config file")]
-    config: PathBuf,
+    config: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
     init_tracing();
 
     let args = Args::parse();
-    let config = Config::load(&args.config)?;
+    let config = Config::load(args.config)?;
 
     let (tx, rx) = mpsc::channel(10);
     let (control_tx, control_rx) = mpsc::channel(5);
@@ -107,8 +107,9 @@ async fn main() -> Result<()> {
     };
     listener::start(tx.clone(), control_rx, auth, config.clone());
 
+    // TODO make it open on the correct display
     let options = eframe::NativeOptions {
-        viewport: ViewportBuilder::default().with_fullscreen(true),
+        viewport: ViewportBuilder::default().with_fullscreen(false),
         ..Default::default()
     };
 
@@ -464,7 +465,24 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load(path: &Path) -> Result<Self> {
+    pub fn load(path: Option<PathBuf>) -> Result<Self> {
+        let path = if let Some(path) = path {
+            path
+        } else {
+            // if path not set then try the current dir and the exe dir
+            let cwd_version = std::env::current_dir()?.join("config.toml");
+            let exe_dir_version = std::env::current_exe()?
+                .parent()
+                .unwrap()
+                .join("config.toml");
+            if cwd_version.exists() {
+                cwd_version
+            } else if exe_dir_version.exists() {
+                exe_dir_version
+            } else {
+                return Err(eyre!("Unable to find config file"));
+            }
+        };
         let content = std::fs::read_to_string(path)?;
         toml::de::from_str(&content).map_err(Into::into)
     }
