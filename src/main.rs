@@ -2,12 +2,12 @@
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
 use clap::Parser;
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{Result, eyre::eyre};
 use eframe::epaint::text::{FontInsert, InsertFontFamily};
 use egui::{
-    scroll_area::{ScrollBarVisibility, ScrollSource},
     Align, Color32, FontFamily, FontId, Layout, Modal, Pos2, Rect, RichText,
     TextStyle, Vec2, ViewportBuilder, ViewportCommand, ViewportId,
+    scroll_area::{ScrollBarVisibility, ScrollSource},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,11 +16,12 @@ use std::{
     path::PathBuf,
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
 };
 use tokio::sync::{mpsc, oneshot};
+use xrandr::MonitorPositions;
 
 #[macro_use]
 extern crate tracing;
@@ -28,6 +29,7 @@ extern crate tracing;
 mod config;
 mod input;
 mod listener;
+mod xrandr;
 
 const NOTO_SANS: &[u8] = include_bytes!("../fonts/NotoSans-Regular.ttf");
 
@@ -108,15 +110,20 @@ async fn main() -> Result<()> {
     listener::start(tx.clone(), control_rx, auth, config.clone());
 
     // TODO make it open on the correct display
+    // Use set position to position the window on the secondary display.
+    // The position is derived from a call to xrandr
+    let monitor_positions = xrandr::monitor_positions();
     let options = eframe::NativeOptions {
-        viewport: ViewportBuilder::default().with_fullscreen(false),
+        viewport: ViewportBuilder::default()
+            .with_fullscreen(true)
+            .with_position(monitor_positions.external),
         ..Default::default()
     };
 
-    let app = MyApp::new(rx, control_tx).await?;
+    let app = MyApp::new(rx, control_tx, monitor_positions).await?;
 
     eframe::run_native(
-        "egui example: custom font",
+        "captioninator",
         options,
         Box::new(|cc| {
             cc.egui_ctx.all_styles_mut(|style| {
@@ -156,7 +163,7 @@ async fn main() -> Result<()> {
 }
 
 fn init_tracing() {
-    use tracing_subscriber::{filter::LevelFilter, EnvFilter};
+    use tracing_subscriber::{EnvFilter, filter::LevelFilter};
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -220,6 +227,7 @@ struct MyApp {
     text_buffer: VecDeque<String>,
     active_line: Option<String>,
     rx: mpsc::Receiver<Line>,
+    monitor_positions: MonitorPositions,
     control_state: Arc<Mutex<ControlState>>,
 }
 
@@ -309,6 +317,7 @@ impl MyApp {
     async fn new(
         rx: mpsc::Receiver<Line>,
         control_tx: mpsc::Sender<ControlMessage>,
+        monitor_positions: xrandr::MonitorPositions,
     ) -> Result<Self> {
         let wordlist = {
             let (tx, rx) = oneshot::channel();
@@ -323,6 +332,7 @@ impl MyApp {
             text_buffer: VecDeque::with_capacity(LINE_BUFFER_SIZE * 2),
             active_line: None,
             rx,
+            monitor_positions,
             control_state: Arc::new(Mutex::new(ControlState {
                 state: State::default(),
                 fullscreen_font_size: 100.0,
@@ -352,7 +362,9 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.show_viewport_deferred(
             ViewportId::from_hash_of("controls-window"),
-            ViewportBuilder::default().with_title("Caption controls"),
+            ViewportBuilder::default()
+                .with_title("Caption controls")
+                .with_position(self.monitor_positions.internal),
             {
                 let control_state = Arc::clone(&self.control_state);
                 move |ctx, _| config::window(ctx, Arc::clone(&control_state))
