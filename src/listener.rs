@@ -7,7 +7,7 @@ use tokio::{
     io::{AsyncReadExt, BufReader},
     sync::mpsc,
 };
-use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
+use tokio_stream::{Stream, StreamExt, wrappers::ReceiverStream};
 
 const TEST_LINES: &str = include_str!("test-data.txt");
 
@@ -343,7 +343,10 @@ fn handle_lang_and_wordlist(
 fn list_wordlists(dir: &Path) -> Vec<Arc<str>> {
     let mut options = Vec::new();
 
-    for entry in dir.read_dir().unwrap() {
+    for entry in dir
+        .read_dir()
+        .unwrap_or_else(|err| panic!("Path: {}\n{:?}", dir.display(), err))
+    {
         let Ok(entry) = entry else { continue };
         let Ok(file_type) = entry.file_type() else {
             continue;

@@ -1012,6 +1012,7 @@ dependencies = [
  "eframe",
  "egui",
  "env_logger",
+ "regex",
  "serde",
  "tokio",
  "tokio-stream",
