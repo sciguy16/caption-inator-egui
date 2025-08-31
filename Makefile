@@ -1,14 +1,27 @@
 .PHONY: deploy
 
 TARGET=armv7-unknown-linux-gnueabihf
-BIN=target/$(TARGET)/release/egui-version
+ARM_BIN=target/$(TARGET)/release/egui-version
+BIN=target/release/egui-version
 PI=caption.local
+DEBIAN=debian.local
+T430=t430.local
 
-$(BIN): src
+
+$(ARM_BIN): src
 	cross build --release --target $(TARGET)
 
-deploy: $(BIN) wordlists config.toml
+$(BIN): src
+	cargo build --release
+
+deploy: $(ARM_BIN) wordlists config.toml
 	scp -r $^ $(PI):~
+
+deploy-debian: $(BIN) wordlists config.toml
+	scp -r $^ $(DEBIAN):~/Desktop/
+
+deploy-t430: $(BIN) wordlists config.toml
+	scp -r $^ $(T430):~/Desktop/
 
 deps:
 	ssh $(PI) sudo apt-get update "&&" sudo apt-get install -y \
