@@ -1,11 +1,11 @@
 use crate::{
-    DisplayMode, MAX_FONT, MAX_SUBTITLE_HEIGHT, MIN_FONT, MIN_SUBTITLE_HEIGHT,
-    RunState,
+    DisplayMode, RunState, MAX_FONT, MAX_SUBTITLE_HEIGHT, MIN_FONT,
+    MIN_SUBTITLE_HEIGHT,
 };
 use egui::{Button, ComboBox, RichText, Slider, Ui};
 use std::{
     ops::DerefMut,
-    sync::{Arc, Mutex, atomic::Ordering},
+    sync::{atomic::Ordering, Arc, Mutex},
 };
 
 pub fn show(ui: &mut Ui, app: &mut crate::ControlState) {
@@ -104,7 +104,7 @@ pub fn window(
 
     let mut control_state = control_state.lock().unwrap();
 
-    crate::input::process(ctx, control_state.deref_mut());
+    crate::gui::input::process(ctx, control_state.deref_mut());
 
     egui::CentralPanel::default().show(ctx, |ui| {
         show(ui, control_state.deref_mut());

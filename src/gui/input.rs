@@ -1,5 +1,5 @@
 use crate::{
-    MAX_FONT, MAX_SUBTITLE_HEIGHT, MIN_FONT, MIN_SUBTITLE_HEIGHT, State,
+    gui::State, MAX_FONT, MAX_SUBTITLE_HEIGHT, MIN_FONT, MIN_SUBTITLE_HEIGHT,
 };
 use egui::{Context, Key};
 

@@ -1,6 +1,13 @@
+use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use serde::Deserialize;
 use std::path::PathBuf;
+
+#[derive(Parser)]
+pub struct Args {
+    #[clap(long, help = "Path to config file")]
+    pub config: Option<PathBuf>,
+}
 
 #[derive(Clone, Deserialize)]
 pub struct Config {

@@ -4,31 +4,19 @@
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use eframe::epaint::text::{FontInsert, InsertFontFamily};
-use egui::{
-    scroll_area::{ScrollBarVisibility, ScrollSource},
-    Align, Color32, FontFamily, FontId, Layout, Modal, Pos2, Rect, RichText,
-    TextStyle, Vec2, ViewportBuilder, ViewportCommand, ViewportId,
-};
+use egui::{FontFamily, FontId, TextStyle, ViewportBuilder};
 use serde::Serialize;
 use std::{
-    collections::VecDeque,
-    ops::DerefMut,
-    path::PathBuf,
     str::FromStr,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
-    },
+    sync::{atomic::AtomicBool, Arc},
 };
 use tokio::sync::{mpsc, oneshot};
-use xrandr::MonitorPositions;
 
 #[macro_use]
 extern crate tracing;
 
 mod config;
-mod controls;
-mod input;
+mod gui;
 mod listener;
 mod xrandr;
 
@@ -86,18 +74,12 @@ struct Wordlist {
     current: Option<Arc<str>>,
 }
 
-#[derive(Parser)]
-struct Args {
-    #[clap(long, help = "Path to config file")]
-    config: Option<PathBuf>,
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
     init_tracing();
 
-    let args = Args::parse();
+    let args = config::Args::parse();
     let config = config::Config::load(args.config)?;
 
     let (tx, rx) = mpsc::channel(10);
@@ -110,7 +92,6 @@ async fn main() -> Result<()> {
     };
     listener::start(tx.clone(), control_rx, auth, config.clone());
 
-    // TODO make it open on the correct display
     // Use set position to position the window on the secondary display.
     // The position is derived from a call to xrandr
     let monitor_positions = xrandr::monitor_positions();
@@ -121,7 +102,7 @@ async fn main() -> Result<()> {
         ..Default::default()
     };
 
-    let app = MyApp::new(rx, control_tx, monitor_positions).await?;
+    let app = gui::MyApp::new(rx, control_tx, monitor_positions).await?;
 
     eframe::run_native(
         "captioninator",
@@ -224,16 +205,8 @@ fn replace_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-struct MyApp {
-    text_buffer: VecDeque<String>,
-    active_line: Option<String>,
-    rx: mpsc::Receiver<Line>,
-    monitor_positions: MonitorPositions,
-    control_state: Arc<Mutex<ControlState>>,
-}
-
 struct ControlState {
-    state: State,
+    state: gui::State,
     fullscreen_font_size: f32,
     subtitle_font_size: f32,
     subtitle_height_proportion: f32,
@@ -311,161 +284,5 @@ impl DisplayMode {
             Self::Fullscreen => Self::Subtitle,
             Self::Subtitle => Self::Fullscreen,
         }
-    }
-}
-
-impl MyApp {
-    async fn new(
-        rx: mpsc::Receiver<Line>,
-        control_tx: mpsc::Sender<ControlMessage>,
-        monitor_positions: xrandr::MonitorPositions,
-    ) -> Result<Self> {
-        let wordlist = {
-            let (tx, rx) = oneshot::channel();
-            control_tx
-                .send(ControlMessage::GetWordlist(tx))
-                .await
-                .unwrap();
-            rx.await?
-        };
-
-        Ok(Self {
-            text_buffer: VecDeque::with_capacity(LINE_BUFFER_SIZE * 2),
-            active_line: None,
-            rx,
-            monitor_positions,
-            control_state: Arc::new(Mutex::new(ControlState {
-                state: State::default(),
-                fullscreen_font_size: 100.0,
-                subtitle_font_size: 50.0,
-                subtitle_height_proportion: 0.2,
-                dark_mode_enabled: true,
-                dark_mode_requested: true,
-                display_mode: DisplayMode::default(),
-                control_tx,
-                run_state: RunState::default(),
-                wordlist_options: wordlist.options,
-                wordlist: wordlist.current,
-                request_close: AtomicBool::default(),
-            })),
-        })
-    }
-}
-
-#[derive(PartialEq, Eq, Default)]
-enum State {
-    #[default]
-    Normal,
-    Config,
-}
-
-impl eframe::App for MyApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        ctx.show_viewport_deferred(
-            ViewportId::from_hash_of("controls-window"),
-            ViewportBuilder::default()
-                .with_title("Caption controls")
-                .with_position(self.monitor_positions.internal),
-            {
-                let control_state = Arc::clone(&self.control_state);
-                move |ctx, _| controls::window(ctx, Arc::clone(&control_state))
-            },
-        );
-
-        while let Ok(line) = self.rx.try_recv() {
-            match line {
-                Line::Recognising(line) => {
-                    self.active_line = Some(line);
-                }
-                Line::Recognised(line) => {
-                    self.text_buffer.push_back(line);
-                    self.active_line.take();
-                }
-            }
-        }
-
-        let mut control_state = self.control_state.lock().unwrap();
-
-        if control_state.request_close.load(Ordering::Relaxed) {
-            ctx.send_viewport_cmd(ViewportCommand::Close);
-        }
-
-        let limit = match control_state.display_mode {
-            DisplayMode::Fullscreen => LINE_BUFFER_SIZE,
-            DisplayMode::Subtitle => 4,
-        };
-        while self.text_buffer.len() > limit {
-            self.text_buffer.pop_front();
-        }
-
-        let max_height = match control_state.display_mode {
-            DisplayMode::Fullscreen => f32::INFINITY,
-            DisplayMode::Subtitle => {
-                ctx.screen_rect().height()
-                    * control_state.subtitle_height_proportion
-            }
-        };
-        let top = match control_state.display_mode {
-            DisplayMode::Fullscreen => 0.0,
-            DisplayMode::Subtitle => ctx.screen_rect().height() - max_height,
-        };
-
-        input::process(ctx, control_state.deref_mut());
-
-        let base_theme = if control_state.dark_mode_requested {
-            catppuccin_egui::MOCHA
-        } else {
-            catppuccin_egui::LATTE
-        };
-        if control_state.dark_mode_enabled != control_state.dark_mode_requested
-        {
-            catppuccin_egui::set_theme(ctx, base_theme);
-            control_state.dark_mode_enabled = control_state.dark_mode_requested;
-        }
-
-        let bg_fill = if control_state.display_mode == DisplayMode::Subtitle {
-            Color32::GREEN
-        } else {
-            base_theme.base
-        };
-
-        // Override the panel fill for just the subtitles panel
-        ctx.style_mut(|styles| {
-            styles.visuals.panel_fill = bg_fill;
-        });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.advance_cursor_after_rect(Rect::from_min_size(
-                Pos2::ZERO,
-                top * Vec2::DOWN,
-            ));
-            egui::ScrollArea::vertical()
-                .stick_to_bottom(true)
-                .scroll_source(ScrollSource::NONE)
-                .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
-                .auto_shrink(false)
-                .show(ui, |ui| {
-                    ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                        for line in
-                            self.text_buffer.iter().chain(&self.active_line)
-                        {
-                            ui.label(
-                                RichText::new(line)
-                                    .size(control_state.font_size()),
-                            );
-                        }
-                    });
-                });
-        });
-        // and then set it back afterwards
-        ctx.style_mut(|styles| {
-            styles.visuals.panel_fill = base_theme.base;
-        });
-
-        if control_state.state == State::Config {
-            Modal::new("config-modal".into())
-                .show(ctx, |ui| controls::show(ui, control_state.deref_mut()));
-        }
-
-        ctx.request_repaint();
     }
 }
