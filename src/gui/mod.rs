@@ -18,6 +18,30 @@ mod controls;
 mod holding_image;
 mod input;
 
+macro_rules! store {
+    ($storage:ident,$control_state:ident, $($field:ident),* $(,)?) => {
+        $(
+            $storage
+            .set_string(
+                stringify!($field),
+                serde_json::to_string(&$control_state.$field).unwrap(),
+            );
+        )*
+    };
+}
+
+macro_rules! load {
+    ($storage:ident,$control_state:ident,$($field:ident),* $(,)?) => {
+        $(
+            if let Some(value) = $storage.get_string(stringify!($field))
+                && let Ok(value) = serde_json::from_str(&value)
+            {
+                $control_state.$field = value;
+            }
+        )*
+    }
+}
+
 pub struct MyApp {
     text_buffer: VecDeque<String>,
     active_line: Option<String>,
@@ -73,6 +97,34 @@ impl MyApp {
                 selected_image,
             })),
         })
+    }
+
+    pub fn save_control_state(&self, storage: &mut dyn eframe::Storage) {
+        let control_state = self.control_state.lock().unwrap();
+        store!(
+            storage,
+            control_state,
+            fullscreen_font_size,
+            subtitle_font_size,
+            dark_mode_enabled,
+            display_mode,
+            wordlist,
+            selected_image,
+        );
+    }
+
+    pub fn load_control_state(&mut self, storage: &dyn eframe::Storage) {
+        let mut control_state = self.control_state.lock().unwrap();
+        load!(
+            storage,
+            control_state,
+            fullscreen_font_size,
+            subtitle_font_size,
+            dark_mode_enabled,
+            display_mode,
+            wordlist,
+            selected_image,
+        );
     }
 }
 
@@ -143,5 +195,10 @@ impl eframe::App for MyApp {
         }
 
         ctx.request_repaint();
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        self.save_control_state(storage);
+        storage.flush();
     }
 }

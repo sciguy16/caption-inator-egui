@@ -5,7 +5,7 @@ use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use eframe::epaint::text::{FontInsert, InsertFontFamily};
 use egui::{FontFamily, FontId, TextStyle, ViewportBuilder};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     path::Path,
     str::FromStr,
@@ -104,7 +104,7 @@ async fn main() -> Result<()> {
         ..Default::default()
     };
 
-    let app =
+    let mut app =
         gui::MyApp::new(rx, config, control_tx, monitor_positions).await?;
 
     eframe::run_native(
@@ -140,6 +140,10 @@ async fn main() -> Result<()> {
             replace_fonts(&cc.egui_ctx);
             add_font(&cc.egui_ctx);
             egui_extras::install_image_loaders(&cc.egui_ctx);
+
+            if let Some(storage) = cc.storage {
+                app.load_control_state(storage);
+            }
 
             Ok(Box::new(app))
         }),
@@ -294,7 +298,9 @@ impl ControlState {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(
+    Copy, Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize,
+)]
 enum DisplayMode {
     #[default]
     Fullscreen,
