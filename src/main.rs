@@ -325,7 +325,10 @@ fn list_directory(dir: &Path) -> Vec<Arc<str>> {
             let Ok(file_name) = entry.file_name().into_string() else {
                 continue;
             };
-            options.push(file_name.into());
+
+            if !file_name.starts_with('.') {
+                options.push(file_name.into());
+            }
         }
     }
 
