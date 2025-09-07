@@ -1,4 +1,4 @@
-use crate::{Config, ControlMessage, Line, Result, RunState, Wordlist};
+use crate::{config::Config, ControlMessage, Line, Result, RunState, Wordlist};
 use color_eyre::eyre::eyre;
 use std::{
     path::Path, process::Stdio, str::FromStr, sync::Arc, time::Duration,
@@ -7,7 +7,7 @@ use tokio::{
     io::{AsyncReadExt, BufReader},
     sync::mpsc,
 };
-use tokio_stream::{Stream, StreamExt, wrappers::ReceiverStream};
+use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
 
 const TEST_LINES: &str = include_str!("test-data.txt");
 

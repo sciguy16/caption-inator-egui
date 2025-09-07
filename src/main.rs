@@ -9,7 +9,7 @@ use egui::{
     Align, Color32, FontFamily, FontId, Layout, Modal, Pos2, Rect, RichText,
     TextStyle, Vec2, ViewportBuilder, ViewportCommand, ViewportId,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{
     collections::VecDeque,
     ops::DerefMut,
@@ -26,6 +26,7 @@ use xrandr::MonitorPositions;
 #[macro_use]
 extern crate tracing;
 
+mod config;
 mod controls;
 mod input;
 mod listener;
@@ -97,7 +98,7 @@ async fn main() -> Result<()> {
     init_tracing();
 
     let args = Args::parse();
-    let config = Config::load(args.config)?;
+    let config = config::Config::load(args.config)?;
 
     let (tx, rx) = mpsc::channel(10);
     let (control_tx, control_rx) = mpsc::channel(5);
@@ -466,36 +467,5 @@ impl eframe::App for MyApp {
         }
 
         ctx.request_repaint();
-    }
-}
-
-#[derive(Clone, Deserialize)]
-pub struct Config {
-    pub region: Option<String>,
-    pub key: Option<String>,
-    pub wordlist_dir: Option<PathBuf>,
-}
-
-impl Config {
-    pub fn load(path: Option<PathBuf>) -> Result<Self> {
-        let path = if let Some(path) = path {
-            path
-        } else {
-            // if path not set then try the current dir and the exe dir
-            let cwd_version = std::env::current_dir()?.join("config.toml");
-            let exe_dir_version = std::env::current_exe()?
-                .parent()
-                .unwrap()
-                .join("config.toml");
-            if cwd_version.exists() {
-                cwd_version
-            } else if exe_dir_version.exists() {
-                exe_dir_version
-            } else {
-                return Err(eyre!("Unable to find config file"));
-            }
-        };
-        let content = std::fs::read_to_string(path)?;
-        toml::de::from_str(&content).map_err(Into::into)
     }
 }
