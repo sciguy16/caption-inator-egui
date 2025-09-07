@@ -2,12 +2,12 @@
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
 use clap::Parser;
-use color_eyre::{Result, eyre::eyre};
+use color_eyre::{eyre::eyre, Result};
 use eframe::epaint::text::{FontInsert, InsertFontFamily};
 use egui::{
+    scroll_area::{ScrollBarVisibility, ScrollSource},
     Align, Color32, FontFamily, FontId, Layout, Modal, Pos2, Rect, RichText,
     TextStyle, Vec2, ViewportBuilder, ViewportCommand, ViewportId,
-    scroll_area::{ScrollBarVisibility, ScrollSource},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,8 +16,8 @@ use std::{
     path::PathBuf,
     str::FromStr,
     sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
     },
 };
 use tokio::sync::{mpsc, oneshot};
@@ -26,7 +26,7 @@ use xrandr::MonitorPositions;
 #[macro_use]
 extern crate tracing;
 
-mod config;
+mod controls;
 mod input;
 mod listener;
 mod xrandr;
@@ -163,7 +163,7 @@ async fn main() -> Result<()> {
 }
 
 fn init_tracing() {
-    use tracing_subscriber::{EnvFilter, filter::LevelFilter};
+    use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -367,7 +367,7 @@ impl eframe::App for MyApp {
                 .with_position(self.monitor_positions.internal),
             {
                 let control_state = Arc::clone(&self.control_state);
-                move |ctx, _| config::window(ctx, Arc::clone(&control_state))
+                move |ctx, _| controls::window(ctx, Arc::clone(&control_state))
             },
         );
 
@@ -462,7 +462,7 @@ impl eframe::App for MyApp {
 
         if control_state.state == State::Config {
             Modal::new("config-modal".into())
-                .show(ctx, |ui| config::show(ui, control_state.deref_mut()));
+                .show(ctx, |ui| controls::show(ui, control_state.deref_mut()));
         }
 
         ctx.request_repaint();
