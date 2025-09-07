@@ -111,8 +111,10 @@ async fn main() -> Result<()> {
         "captioninator",
         options,
         Box::new(|cc| {
+            catppuccin_egui::set_theme(&cc.egui_ctx, catppuccin_egui::MOCHA);
+
             cc.egui_ctx.all_styles_mut(|style| {
-                let text_styles = {
+                style.text_styles = {
                     use FontFamily::Proportional;
                     use TextStyle::*;
                     [
@@ -133,9 +135,8 @@ async fn main() -> Result<()> {
                 }
                 .into();
 
-                style.text_styles = text_styles;
+                // style.visuals.widgets.active.weak_bg_fill = egui::Color32::RED;
             });
-            catppuccin_egui::set_theme(&cc.egui_ctx, catppuccin_egui::MOCHA);
 
             replace_fonts(&cc.egui_ctx);
             add_font(&cc.egui_ctx);

@@ -85,33 +85,19 @@ pub fn show(ui: &mut Ui, app: &mut crate::ControlState) {
     });
 
     ui.horizontal(|ui| {
-        if ui
-            .add(
-                Button::new("Run [space]")
-                    .selected(app.run_state == RunState::Running),
-            )
-            .clicked()
-        {
+        if button(ui, "Run [space]", app.run_state == RunState::Running) {
             app.toggle_running();
         }
 
-        if ui
-            .add(
-                Button::new("Test [t]")
-                    .selected(app.run_state == RunState::Test),
-            )
-            .clicked()
-        {
+        if button(ui, "Test [t]", app.run_state == RunState::Test) {
             app.toggle_test_mode();
         }
 
-        if ui
-            .add(
-                Button::new("Holding image [h]")
-                    .selected(app.run_state == RunState::HoldingSlide),
-            )
-            .clicked()
-        {
+        if button(
+            ui,
+            "Holding image [h]",
+            app.run_state == RunState::HoldingSlide,
+        ) {
             app.toggle_holding_slide();
         }
     });
@@ -119,6 +105,14 @@ pub fn show(ui: &mut Ui, app: &mut crate::ControlState) {
     if ui.button("Exit").clicked() {
         app.request_close.store(true, Ordering::Relaxed);
     }
+}
+
+fn button(ui: &mut Ui, text: &str, selected: bool) -> bool {
+    let mut button = Button::new(text).selected(selected);
+    if selected {
+        button = button.fill(egui::Color32::RED);
+    }
+    ui.add(button).clicked()
 }
 
 pub fn window(
