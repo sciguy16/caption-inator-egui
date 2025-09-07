@@ -1,8 +1,6 @@
 use crate::{config::Config, ControlMessage, Line, Result, RunState, Wordlist};
 use color_eyre::eyre::eyre;
-use std::{
-    path::Path, process::Stdio, str::FromStr, sync::Arc, time::Duration,
-};
+use std::{process::Stdio, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, BufReader},
     sync::mpsc,
@@ -61,7 +59,7 @@ async fn start_inner(
 
     loop {
         run_state = match run_state {
-            RunState::Stopped => {
+            RunState::Stopped | RunState::HoldingSlide => {
                 wait_for_transition(&mut control_rx, &mut setup_state, &config)
                     .await
             }
@@ -313,7 +311,7 @@ fn handle_lang_and_wordlist(
             let options = config
                 .wordlist_dir
                 .as_deref()
-                .map(list_wordlists)
+                .map(crate::list_directory)
                 .unwrap_or_default();
             let _ = reply.send(Wordlist {
                 options,
@@ -324,7 +322,7 @@ fn handle_lang_and_wordlist(
             let options = config
                 .wordlist_dir
                 .as_deref()
-                .map(list_wordlists)
+                .map(crate::list_directory)
                 .unwrap_or_default();
             if let Some(choice) = choice {
                 if options.contains(&choice) {
@@ -338,26 +336,4 @@ fn handle_lang_and_wordlist(
         }
         other => panic!("Unreachable: {other:?}"),
     }
-}
-
-fn list_wordlists(dir: &Path) -> Vec<Arc<str>> {
-    let mut options = Vec::new();
-
-    for entry in dir
-        .read_dir()
-        .unwrap_or_else(|err| panic!("Path: {}\n{:?}", dir.display(), err))
-    {
-        let Ok(entry) = entry else { continue };
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_file() {
-            let Ok(file_name) = entry.file_name().into_string() else {
-                continue;
-            };
-            options.push(file_name.into());
-        }
-    }
-
-    options
 }

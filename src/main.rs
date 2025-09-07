@@ -7,6 +7,7 @@ use eframe::epaint::text::{FontInsert, InsertFontFamily};
 use egui::{FontFamily, FontId, TextStyle, ViewportBuilder};
 use serde::Serialize;
 use std::{
+    path::Path,
     str::FromStr,
     sync::{atomic::AtomicBool, Arc},
 };
@@ -46,6 +47,7 @@ enum RunState {
     Stopped,
     Running,
     Test,
+    HoldingSlide,
 }
 
 #[derive(Debug)]
@@ -102,7 +104,8 @@ async fn main() -> Result<()> {
         ..Default::default()
     };
 
-    let app = gui::MyApp::new(rx, control_tx, monitor_positions).await?;
+    let app =
+        gui::MyApp::new(rx, config, control_tx, monitor_positions).await?;
 
     eframe::run_native(
         "captioninator",
@@ -136,6 +139,7 @@ async fn main() -> Result<()> {
 
             replace_fonts(&cc.egui_ctx);
             add_font(&cc.egui_ctx);
+            egui_extras::install_image_loaders(&cc.egui_ctx);
 
             Ok(Box::new(app))
         }),
@@ -218,6 +222,8 @@ struct ControlState {
     wordlist_options: Vec<Arc<str>>,
     wordlist: Option<Arc<str>>,
     request_close: AtomicBool,
+    image_options: Vec<Arc<str>>,
+    selected_image: Option<Arc<str>>,
 }
 
 impl ControlState {
@@ -238,7 +244,7 @@ impl ControlState {
     fn toggle_running(&mut self) {
         self.run_state = match self.run_state {
             RunState::Running | RunState::Test => RunState::Stopped,
-            RunState::Stopped => RunState::Running,
+            RunState::Stopped | RunState::HoldingSlide => RunState::Running,
         };
         if let Err(err) = self
             .control_tx
@@ -251,8 +257,25 @@ impl ControlState {
     fn toggle_test_mode(&mut self) {
         self.run_state = match self.run_state {
             RunState::Running | RunState::Test => RunState::Stopped,
-            RunState::Stopped => RunState::Test,
+            RunState::Stopped | RunState::HoldingSlide => RunState::Test,
         };
+        if let Err(err) = self
+            .control_tx
+            .try_send(ControlMessage::SetState(self.run_state))
+        {
+            error!("{err}");
+        }
+    }
+
+    fn toggle_holding_slide(&mut self) {
+        self.run_state = match self.run_state {
+            RunState::HoldingSlide => RunState::Stopped,
+            RunState::Running | RunState::Stopped | RunState::Test => {
+                RunState::HoldingSlide
+            }
+        };
+        dbg!(self.run_state);
+        dbg!(&self.selected_image);
         if let Err(err) = self
             .control_tx
             .try_send(ControlMessage::SetState(self.run_state))
@@ -285,4 +308,26 @@ impl DisplayMode {
             Self::Subtitle => Self::Fullscreen,
         }
     }
+}
+
+fn list_directory(dir: &Path) -> Vec<Arc<str>> {
+    let mut options = Vec::new();
+
+    for entry in dir
+        .read_dir()
+        .unwrap_or_else(|err| panic!("Path: {}\n{:?}", dir.display(), err))
+    {
+        let Ok(entry) = entry else { continue };
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_file() {
+            let Ok(file_name) = entry.file_name().into_string() else {
+                continue;
+            };
+            options.push(file_name.into());
+        }
+    }
+
+    options
 }

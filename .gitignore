@@ -1,4 +1,5 @@
 wordlists/*.txt
+images/*.png
 target
 config.toml
 *.swp

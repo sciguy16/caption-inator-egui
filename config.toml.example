@@ -3,3 +3,4 @@ region = "uksouth"
 # Azure speech services key
 key = ""
 wordlist_dir = ""
+images_dir = ""

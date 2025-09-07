@@ -1,24 +1,21 @@
-use crate::xrandr::MonitorPositions;
 use crate::{
-    ControlMessage, ControlState, DisplayMode, Line, RunState, LINE_BUFFER_SIZE,
+    xrandr::MonitorPositions, ControlMessage, ControlState, DisplayMode, Line,
+    RunState, LINE_BUFFER_SIZE,
 };
 use color_eyre::Result;
-use egui::{
-    scroll_area::{ScrollBarVisibility, ScrollSource},
-    Align, Color32, Layout, Modal, Pos2, Rect, RichText, Vec2, ViewportBuilder,
-    ViewportCommand, ViewportId,
-};
+use egui::{Modal, ViewportBuilder, ViewportCommand, ViewportId};
 use std::{
     collections::VecDeque,
     ops::DerefMut,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
-    },
+    sync::atomic::{AtomicBool, Ordering},
+    sync::Arc,
+    sync::Mutex,
 };
 use tokio::sync::{mpsc, oneshot};
 
+mod captions;
 mod controls;
+mod holding_image;
 mod input;
 
 pub struct MyApp {
@@ -26,12 +23,14 @@ pub struct MyApp {
     active_line: Option<String>,
     rx: mpsc::Receiver<Line>,
     monitor_positions: MonitorPositions,
+    config: crate::config::Config,
     control_state: Arc<Mutex<ControlState>>,
 }
 
 impl MyApp {
     pub async fn new(
         rx: mpsc::Receiver<Line>,
+        config: crate::config::Config,
         control_tx: mpsc::Sender<ControlMessage>,
         monitor_positions: crate::xrandr::MonitorPositions,
     ) -> Result<Self> {
@@ -44,11 +43,19 @@ impl MyApp {
             rx.await?
         };
 
+        let image_options = config
+            .images_dir
+            .as_deref()
+            .map(crate::list_directory)
+            .unwrap_or_default();
+        let selected_image = image_options.first().cloned();
+
         Ok(Self {
             text_buffer: VecDeque::with_capacity(LINE_BUFFER_SIZE * 2),
             active_line: None,
             rx,
             monitor_positions,
+            config,
             control_state: Arc::new(Mutex::new(ControlState {
                 state: State::default(),
                 fullscreen_font_size: 100.0,
@@ -62,6 +69,8 @@ impl MyApp {
                 wordlist_options: wordlist.options,
                 wordlist: wordlist.current,
                 request_close: AtomicBool::default(),
+                image_options,
+                selected_image,
             })),
         })
     }
@@ -105,6 +114,8 @@ impl eframe::App for MyApp {
             ctx.send_viewport_cmd(ViewportCommand::Close);
         }
 
+        input::process(ctx, control_state.deref_mut());
+
         let limit = match control_state.display_mode {
             DisplayMode::Fullscreen => LINE_BUFFER_SIZE,
             DisplayMode::Subtitle => 4,
@@ -113,72 +124,22 @@ impl eframe::App for MyApp {
             self.text_buffer.pop_front();
         }
 
-        let max_height = match control_state.display_mode {
-            DisplayMode::Fullscreen => f32::INFINITY,
-            DisplayMode::Subtitle => {
-                ctx.screen_rect().height()
-                    * control_state.subtitle_height_proportion
-            }
-        };
-        let top = match control_state.display_mode {
-            DisplayMode::Fullscreen => 0.0,
-            DisplayMode::Subtitle => ctx.screen_rect().height() - max_height,
-        };
-
-        input::process(ctx, control_state.deref_mut());
-
-        let base_theme = if control_state.dark_mode_requested {
-            catppuccin_egui::MOCHA
-        } else {
-            catppuccin_egui::LATTE
-        };
-        if control_state.dark_mode_enabled != control_state.dark_mode_requested
-        {
-            catppuccin_egui::set_theme(ctx, base_theme);
-            control_state.dark_mode_enabled = control_state.dark_mode_requested;
-        }
-
-        let bg_fill = if control_state.display_mode == DisplayMode::Subtitle {
-            Color32::GREEN
-        } else {
-            base_theme.base
-        };
-
-        // Override the panel fill for just the subtitles panel
-        ctx.style_mut(|styles| {
-            styles.visuals.panel_fill = bg_fill;
-        });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.advance_cursor_after_rect(Rect::from_min_size(
-                Pos2::ZERO,
-                top * Vec2::DOWN,
-            ));
-            egui::ScrollArea::vertical()
-                .stick_to_bottom(true)
-                .scroll_source(ScrollSource::NONE)
-                .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
-                .auto_shrink(false)
-                .show(ui, |ui| {
-                    ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                        for line in
-                            self.text_buffer.iter().chain(&self.active_line)
-                        {
-                            ui.label(
-                                RichText::new(line)
-                                    .size(control_state.font_size()),
-                            );
-                        }
-                    });
-                });
-        });
-        // and then set it back afterwards
-        ctx.style_mut(|styles| {
-            styles.visuals.panel_fill = base_theme.base;
-        });
-
         if control_state.state == State::Config {
             Modal::new("config-modal".into())
                 .show(ctx, |ui| controls::show(ui, control_state.deref_mut()));
+        }
+
+        let run_state = control_state.run_state;
+        let selected_image = control_state.selected_image.clone();
+        drop(control_state);
+
+        if run_state == RunState::HoldingSlide
+            && let Some(selected_image) = selected_image
+            && let Some(images_dir) = self.config.images_dir.as_deref()
+        {
+            holding_image::show(ctx, images_dir, &selected_image)
+        } else {
+            captions::show(self, ctx);
         }
 
         ctx.request_repaint();

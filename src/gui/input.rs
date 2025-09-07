@@ -41,6 +41,10 @@ pub fn process(ctx: &Context, app: &mut crate::ControlState) {
         app.toggle_test_mode();
     }
 
+    if ctx.input(|i| i.key_pressed(Key::H)) {
+        app.toggle_holding_slide();
+    }
+
     *app.font_size_mut() = app.font_size().clamp(MIN_FONT, MAX_FONT);
     app.subtitle_height_proportion = app
         .subtitle_height_proportion

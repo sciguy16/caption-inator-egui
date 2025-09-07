@@ -64,6 +64,27 @@ pub fn show(ui: &mut Ui, app: &mut crate::ControlState) {
     });
 
     ui.horizontal(|ui| {
+        let current_image = app.selected_image.as_deref().unwrap_or("None");
+        let before = app.selected_image.clone();
+        ui.label("Holding image:");
+        ComboBox::from_id_salt("selected_image")
+            .selected_text(current_image)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut app.selected_image, None, "None");
+                for option in &app.image_options {
+                    ui.selectable_value(
+                        &mut app.selected_image,
+                        Some(option.clone()),
+                        option.as_ref(),
+                    );
+                }
+            });
+        if app.selected_image != before {
+            app.update_wordlist();
+        }
+    });
+
+    ui.horizontal(|ui| {
         if ui
             .add(
                 Button::new("Run [space]")
@@ -82,6 +103,16 @@ pub fn show(ui: &mut Ui, app: &mut crate::ControlState) {
             .clicked()
         {
             app.toggle_test_mode();
+        }
+
+        if ui
+            .add(
+                Button::new("Holding image [h]")
+                    .selected(app.run_state == RunState::HoldingSlide),
+            )
+            .clicked()
+        {
+            app.toggle_holding_slide();
         }
     });
 

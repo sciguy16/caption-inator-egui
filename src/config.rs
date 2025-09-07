@@ -1,5 +1,5 @@
 use clap::Parser;
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{Result, eyre::eyre};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -14,6 +14,7 @@ pub struct Config {
     pub region: Option<String>,
     pub key: Option<String>,
     pub wordlist_dir: Option<PathBuf>,
+    pub images_dir: Option<PathBuf>,
 }
 
 impl Config {
