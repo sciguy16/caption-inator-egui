@@ -1,8 +1,11 @@
 use crate::DisplayMode;
 use egui::{
     scroll_area::{ScrollBarVisibility, ScrollSource},
-    Align, Color32, Layout, Pos2, Rect, RichText, Vec2,
+    Align, Color32, Frame, Layout, Margin, Rect, RichText, Vec2,
 };
+
+const PADDING_HORIZONTAL: i8 = 50;
+const PADDING_VERTICAL: i8 = 10;
 
 pub fn show(app: &mut crate::gui::MyApp, ctx: &egui::Context) {
     let mut control_state = app.control_state.lock().unwrap();
@@ -14,6 +17,7 @@ pub fn show(app: &mut crate::gui::MyApp, ctx: &egui::Context) {
                 * control_state.subtitle_height_proportion
         }
     };
+
     let top = match control_state.display_mode {
         DisplayMode::Fullscreen => 0.0,
         DisplayMode::Subtitle => ctx.screen_rect().height() - max_height,
@@ -39,26 +43,40 @@ pub fn show(app: &mut crate::gui::MyApp, ctx: &egui::Context) {
     ctx.style_mut(|styles| {
         styles.visuals.panel_fill = bg_fill;
     });
-    egui::CentralPanel::default().show(ctx, |ui| {
-        ui.advance_cursor_after_rect(Rect::from_min_size(
-            Pos2::ZERO,
-            top * Vec2::DOWN,
-        ));
-        egui::ScrollArea::vertical()
-            .stick_to_bottom(true)
-            .scroll_source(ScrollSource::NONE)
-            .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
-            .auto_shrink(false)
-            .show(ui, |ui| {
-                ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                    for line in app.text_buffer.iter().chain(&app.active_line) {
-                        ui.label(
-                            RichText::new(line).size(control_state.font_size()),
-                        );
-                    }
+    egui::CentralPanel::default()
+        .frame(
+            Frame::default()
+                .inner_margin(Margin::symmetric(
+                    PADDING_HORIZONTAL,
+                    PADDING_VERTICAL,
+                ))
+                .fill(bg_fill),
+        )
+        .show(ctx, |ui| {
+            ui.advance_cursor_after_rect(Rect::from_min_size(
+                ui.next_widget_position(),
+                top * Vec2::DOWN,
+            ));
+            egui::ScrollArea::vertical()
+                .stick_to_bottom(true)
+                .scroll_source(ScrollSource::NONE)
+                .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
+                .auto_shrink(false)
+                // .max_width(max_width)
+                .show(ui, |ui| {
+                    ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                        for line in
+                            app.text_buffer.iter().chain(&app.active_line)
+                        {
+                            ui.label(
+                                RichText::new(line)
+                                    .size(control_state.font_size()),
+                            );
+                        }
+                    });
+                    // });
                 });
-            });
-    });
+        });
     // and then set it back afterwards
     ctx.style_mut(|styles| {
         styles.visuals.panel_fill = base_theme.base;
