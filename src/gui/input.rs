@@ -1,7 +1,7 @@
 use crate::{
     gui::State, MAX_FONT, MAX_SUBTITLE_HEIGHT, MIN_FONT, MIN_SUBTITLE_HEIGHT,
 };
-use egui::{Context, Key};
+use egui::{Context, Key, ViewportCommand};
 
 pub fn process(ctx: &Context, app: &mut crate::ControlState) {
     if ctx.input(|i| i.key_pressed(Key::F1)) {
@@ -45,8 +45,19 @@ pub fn process(ctx: &Context, app: &mut crate::ControlState) {
         app.toggle_holding_slide();
     }
 
+    if ctx.input(|i| i.key_pressed(Key::F11)) {
+        toggle_fullscreen(ctx);
+    }
+
     *app.font_size_mut() = app.font_size().clamp(MIN_FONT, MAX_FONT);
     app.subtitle_height_proportion = app
         .subtitle_height_proportion
         .clamp(MIN_SUBTITLE_HEIGHT, MAX_SUBTITLE_HEIGHT);
+}
+
+fn toggle_fullscreen(ctx: &egui::Context) {
+    let is_fullscreen = ctx.input(|input_state| {
+        input_state.viewport().fullscreen.unwrap_or(false)
+    });
+    ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!is_fullscreen));
 }
