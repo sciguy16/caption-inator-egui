@@ -4,7 +4,7 @@ TARGET=armv7-unknown-linux-gnueabihf
 ARM_BIN=target/$(TARGET)/release/egui-version
 BIN=target/release/egui-version
 PI=caption.local
-DEBIAN=debian.local
+X230=x230.local
 T430=t430.local
 
 
@@ -17,10 +17,10 @@ $(BIN): src
 deploy: $(ARM_BIN) wordlists config.toml
 	scp -r $^ $(PI):~
 
-deploy-debian: $(BIN) wordlists config.toml
-	scp -r $^ $(DEBIAN):~/Desktop/
+deploy-x230: $(BIN) wordlists images config.toml
+	scp -r $^ $(X230):~/Desktop/
 
-deploy-t430: $(BIN) wordlists config.toml
+deploy-t430: $(BIN) wordlists images config.toml
 	scp -r $^ $(T430):~/Desktop/
 
 deps:
