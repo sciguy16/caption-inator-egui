@@ -53,6 +53,10 @@ pub fn process(ctx: &Context, app: &mut crate::ControlState) {
     app.subtitle_height_proportion = app
         .subtitle_height_proportion
         .clamp(MIN_SUBTITLE_HEIGHT, MAX_SUBTITLE_HEIGHT);
+
+    if ctx.input(|input| input.viewport().close_requested()) {
+        app.stop();
+    }
 }
 
 fn toggle_fullscreen(ctx: &egui::Context) {

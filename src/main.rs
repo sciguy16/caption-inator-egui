@@ -289,6 +289,17 @@ impl ControlState {
         }
     }
 
+    fn stop(&mut self) {
+        self.run_state = RunState::Stopped;
+
+        if let Err(err) = self
+            .control_tx
+            .try_send(ControlMessage::SetState(self.run_state))
+        {
+            error!("{err}");
+        }
+    }
+
     fn update_wordlist(&mut self) {
         if let Err(err) = self
             .control_tx
