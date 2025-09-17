@@ -9,7 +9,7 @@ use std::{
 };
 
 pub fn show(ui: &mut Ui, app: &mut crate::ControlState) {
-    ui.heading(RichText::new("game").size(50.0));
+    ui.heading(RichText::new("Captions").size(50.0));
 
     ui.add(
         Slider::new(app.font_size_mut(), MIN_FONT..=MAX_FONT).text("Font size"),
@@ -102,9 +102,15 @@ pub fn show(ui: &mut Ui, app: &mut crate::ControlState) {
         }
     });
 
-    if ui.button("Exit").clicked() {
-        app.request_close.store(true, Ordering::Relaxed);
-    }
+    ui.horizontal(|ui| {
+        if ui.button("Exit").clicked() {
+            app.request_close.store(true, Ordering::Relaxed);
+        }
+
+        if ui.button("Clear").clicked() {
+            app.request_clear.store(true, Ordering::Relaxed);
+        }
+    });
 }
 
 fn button(ui: &mut Ui, text: &str, selected: bool) -> bool {

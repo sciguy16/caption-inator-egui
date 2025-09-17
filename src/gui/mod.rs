@@ -93,6 +93,7 @@ impl MyApp {
                 wordlist_options: wordlist.options,
                 wordlist: wordlist.current,
                 request_close: AtomicBool::default(),
+                request_clear: AtomicBool::default(),
                 image_options,
                 selected_image,
             })),
@@ -164,6 +165,10 @@ impl eframe::App for MyApp {
 
         if control_state.request_close.load(Ordering::Relaxed) {
             ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
+        if control_state.request_clear.swap(false, Ordering::Relaxed) {
+            self.text_buffer.clear();
+            self.active_line = None;
         }
 
         input::process(ctx, control_state.deref_mut());

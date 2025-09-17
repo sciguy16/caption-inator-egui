@@ -227,6 +227,7 @@ struct ControlState {
     wordlist_options: Vec<Arc<str>>,
     wordlist: Option<Arc<str>>,
     request_close: AtomicBool,
+    request_clear: AtomicBool,
     image_options: Vec<Arc<str>>,
     selected_image: Option<Arc<str>>,
 }
