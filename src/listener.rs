@@ -134,73 +134,66 @@ async fn do_run(
         azure_config = azure_config.set_phrases(wordlist);
     }
 
-    let client =
-        azure_speech::recognizer::Client::connect(auth.clone(), azure_config)
-            .await
-            .map_err(|err| eyre!("{err:?}"))?;
-
-    let stream = listen_from_default_input().await?;
-
-    let mut events = client
-        .recognize(
-            stream,
-            azure_speech::recognizer::AudioFormat::WebmOpus,
-            azure_speech::recognizer::AudioDevice::new(
-                azure_speech::recognizer::SourceType::Microphones,
-            ),
+    'reconnection: loop {
+        let client = azure_speech::recognizer::Client::connect(
+            auth.clone(),
+            azure_config.clone(),
         )
         .await
         .map_err(|err| eyre!("{err:?}"))?;
 
-    tracing::info!("... Starting to listen from microphone ...");
+        let stream = listen_from_default_input().await?;
 
-    loop {
-        tokio::select! {
-            event = events.next() => {
-                let Some(event) = event else { break };
-                dbg!(&event);
-                use azure_speech::recognizer::Event;
-                let  line =
+        let mut events = client
+            .recognize(
+                stream,
+                azure_speech::recognizer::AudioFormat::WebmOpus,
+                azure_speech::recognizer::AudioDevice::new(
+                    azure_speech::recognizer::SourceType::Microphones,
+                ),
+            )
+            .await
+            .map_err(|err| eyre!("{err:?}"))?;
 
-                match event {
-                    Ok(Event::Recognized(_, result, _, _, _)) => {
-                        Some(Line::Recognised(result.text.clone()))
-                    }
-                    Ok(Event::Recognizing(_, result, _, _, _)) => {
-                        Some(Line::Recognising(result.text.clone()))
-                    }
-                    Err(err) => {
+        tracing::info!("... Starting to listen from microphone ...");
+
+        let new_state = loop {
+            tokio::select! {
+                event = events.next() => {
+                    if let Err(err) = handle_event(event, tx).await {
                         error!("{err:?}");
-                        None
+                        break RunState::Running;
                     }
-                    _ => None,
-                };
-
-                if let Some(line) = line &&
-                     tx.try_send(line).is_err() {
-                        warn!("Line channel full");
-
                 }
-            }
-            msg = control_rx.recv() => {
-                let Some(msg) = msg else { break };
-                match msg {
-                    ControlMessage::SetState(new_state) => {
-                        if new_state != RunState::Running {
-                            info!("Shutting down azure speech client");
-                            if let Err(err) = client.disconnect().await{
-                                error!("{err:?}");
-                            }
-                            return Ok(new_state);
+                msg = control_rx.recv() => {
+                    let Some(msg) = msg else { break 'reconnection};
+                    match msg {
+                        ControlMessage::SetState(RunState::Running) => {}
+                        ControlMessage::SetState(new_state) => {
+                           break new_state;
+                        }
+                        other => {
+                            handle_lang_and_wordlist(
+                                other, setup_state, config,
+                            );
                         }
                     }
-                                       other => {
-                        handle_lang_and_wordlist(other, setup_state,config);
-                    }
-                }
 
+                }
             }
+        };
+
+        if let Err(err) = client.disconnect().await {
+            warn!("Disconnection failed: {err}");
         }
+
+        if new_state != RunState::Running {
+            info!("Azure speech client shut down");
+            return Ok(new_state);
+        }
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        info!("Reconnecting");
     }
 
     Ok(RunState::Stopped)
@@ -259,6 +252,37 @@ async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
     });
 
     Ok(ReceiverStream::new(rx))
+}
+
+async fn handle_event(
+    event: Option<Result<azure_speech::recognizer::Event, azure_speech::Error>>,
+    tx: &mpsc::Sender<Line>,
+) -> Result<(), azure_speech::Error> {
+    use azure_speech::recognizer::Event;
+
+    let Some(event) = event else {
+        return Ok(());
+    };
+    // dbg!(&event);
+    let line = match event? {
+        Event::Recognized(_, result, _, _, _) => {
+            Some(Line::Recognised(result.text))
+        }
+        Event::Recognizing(_, result, _, _, _) => {
+            Some(Line::Recognising(result.text))
+        }
+        event => {
+            info!("Unhandled event: {event:?}");
+            None
+        }
+    };
+
+    if let Some(line) = line
+        && tx.try_send(line).is_err()
+    {
+        warn!("Line channel full");
+    }
+    Ok(())
 }
 
 async fn run_test(
