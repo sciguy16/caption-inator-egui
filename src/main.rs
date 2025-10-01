@@ -2,14 +2,14 @@
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
 use clap::Parser;
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{Result, eyre::eyre};
 use eframe::epaint::text::{FontInsert, InsertFontFamily};
 use egui::{FontFamily, FontId, TextStyle, ViewportBuilder};
 use serde::{Deserialize, Serialize};
 use std::{
     path::Path,
     str::FromStr,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 use tokio::sync::{mpsc, oneshot};
 
@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
 }
 
 fn init_tracing() {
-    use tracing_subscriber::{filter::LevelFilter, EnvFilter};
+    use tracing_subscriber::{EnvFilter, filter::LevelFilter};
 
     tracing_subscriber::fmt()
         .with_env_filter(

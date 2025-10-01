@@ -1,11 +1,11 @@
-use crate::{config::Config, ControlMessage, Line, Result, RunState, Wordlist};
+use crate::{ControlMessage, Line, Result, RunState, Wordlist, config::Config};
 use color_eyre::eyre::eyre;
 use std::{process::Stdio, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, BufReader},
     sync::mpsc,
 };
-use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
+use tokio_stream::{Stream, StreamExt, wrappers::ReceiverStream};
 
 const TEST_LINES: &str = include_str!("test-data.txt");
 
@@ -119,7 +119,8 @@ async fn do_run(
     config: &Config,
 ) -> Result<RunState> {
     let mut azure_config = azure_speech::recognizer::Config::default()
-        .set_language(langauge_from_language(&setup_state.language));
+        .set_language(langauge_from_language(&setup_state.language))
+        .set_profanity(azure_speech::recognizer::Profanity::Raw);
 
     if let (Some(wordlist_dir), Some(wordlist_file)) =
         (&config.wordlist_dir, &setup_state.wordlist)

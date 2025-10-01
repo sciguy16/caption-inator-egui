@@ -1,7 +1,7 @@
 use crate::DisplayMode;
 use egui::{
-    scroll_area::{ScrollBarVisibility, ScrollSource},
     Align, Color32, Frame, Layout, Margin, Rect, RichText, Vec2,
+    scroll_area::{ScrollBarVisibility, ScrollSource},
 };
 
 const PADDING_HORIZONTAL: i8 = 50;

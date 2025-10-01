@@ -1,15 +1,16 @@
 use crate::{
-    xrandr::MonitorPositions, ControlMessage, ControlState, DisplayMode, Line,
-    RunState, LINE_BUFFER_SIZE,
+    ControlMessage, ControlState, DisplayMode, LINE_BUFFER_SIZE, Line,
+    RunState, xrandr::MonitorPositions,
 };
 use color_eyre::Result;
 use egui::{Modal, ViewportBuilder, ViewportCommand, ViewportId};
 use std::{
     collections::VecDeque,
     ops::DerefMut,
-    sync::atomic::{AtomicBool, Ordering},
-    sync::Arc,
-    sync::Mutex,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tokio::sync::{mpsc, oneshot};
 
