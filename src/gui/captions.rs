@@ -4,7 +4,10 @@ use egui::{
     scroll_area::{ScrollBarVisibility, ScrollSource},
 };
 
-const PADDING_HORIZONTAL: i8 = 50;
+//TODO figure out a better way to shift the subtitle mode away from the
+// PiP camera view
+const PADDING_LEFT: i8 = 50;
+const PADDING_RIGHT: i8 = 127;
 const PADDING_VERTICAL: i8 = 10;
 
 pub fn show(app: &mut crate::gui::MyApp, ctx: &egui::Context) {
@@ -46,10 +49,12 @@ pub fn show(app: &mut crate::gui::MyApp, ctx: &egui::Context) {
     egui::CentralPanel::default()
         .frame(
             Frame::default()
-                .inner_margin(Margin::symmetric(
-                    PADDING_HORIZONTAL,
-                    PADDING_VERTICAL,
-                ))
+                .inner_margin(Margin {
+                    left: PADDING_LEFT,
+                    right: PADDING_RIGHT,
+                    top: PADDING_VERTICAL,
+                    bottom: PADDING_VERTICAL,
+                })
                 .fill(bg_fill),
         )
         .show(ctx, |ui| {
