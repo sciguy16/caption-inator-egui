@@ -6,6 +6,7 @@ BIN=target/release/egui-version
 PI=caption.local
 X230=x230.local
 T430=t430.local
+MINIPC=minipc.local
 
 
 $(ARM_BIN): src
@@ -22,6 +23,9 @@ deploy-x230: $(BIN) wordlists images config.toml
 
 deploy-t430: $(BIN) wordlists images config.toml
 	scp -r $^ $(T430):~/Desktop/
+
+deploy-minipc: $(BIN) wordlists images config.toml
+	scp -r $^ $(MINIPC):~/Desktop/
 
 deps:
 	ssh $(PI) sudo apt-get update "&&" sudo apt-get install -y \
