@@ -1,7 +1,7 @@
 use crate::DisplayMode;
 use egui::{
-    Align, Color32, Frame, Layout, Margin, Rect, RichText, Vec2,
     scroll_area::{ScrollBarVisibility, ScrollSource},
+    Align, Color32, Frame, Layout, Margin, Rect, RichText, Vec2,
 };
 
 //TODO figure out a better way to shift the subtitle mode away from the
@@ -16,14 +16,14 @@ pub fn show(app: &mut crate::gui::MyApp, ctx: &egui::Context) {
     let max_height = match control_state.display_mode {
         DisplayMode::Fullscreen => f32::INFINITY,
         DisplayMode::Subtitle => {
-            ctx.screen_rect().height()
+            ctx.content_rect().height()
                 * control_state.subtitle_height_proportion
         }
     };
 
     let top = match control_state.display_mode {
         DisplayMode::Fullscreen => 0.0,
-        DisplayMode::Subtitle => ctx.screen_rect().height() - max_height,
+        DisplayMode::Subtitle => ctx.content_rect().height() - max_height,
     };
 
     let base_theme = if control_state.dark_mode_requested {
