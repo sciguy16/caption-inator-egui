@@ -36,11 +36,12 @@ pub fn show(app: &mut crate::gui::MyApp, ctx: &egui::Context) {
         control_state.dark_mode_enabled = control_state.dark_mode_requested;
     }
 
-    let bg_fill = if control_state.display_mode == DisplayMode::Subtitle {
-        Color32::GREEN
-    } else {
-        base_theme.base
-    };
+    let (max_width, bg_fill) =
+        if control_state.display_mode == DisplayMode::Subtitle {
+            (1350.0, Color32::GREEN)
+        } else {
+            (ctx.content_rect().width(), base_theme.base)
+        };
 
     // Override the panel fill for just the subtitles panel
     ctx.style_mut(|styles| {
@@ -67,7 +68,7 @@ pub fn show(app: &mut crate::gui::MyApp, ctx: &egui::Context) {
                 .scroll_source(ScrollSource::NONE)
                 .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
                 .auto_shrink(false)
-                // .max_width(max_width)
+                .max_width(max_width)
                 .show(ui, |ui| {
                     ui.with_layout(Layout::top_down(Align::Min), |ui| {
                         for line in
