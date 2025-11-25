@@ -13,12 +13,11 @@ pub fn monitor_positions() -> MonitorPositions {
     let displays = listmonitors()
         .inspect_err(|err| warn!("{err:?}"))
         .unwrap_or_default();
-    info!("Discovered displays: {displays:?}");
+    info!("Discovered displays:\n{displays:#?}");
 
-    let Some(internal_display) = displays
-        .iter()
-        .find(|display| display.name.contains("LVDS"))
-    else {
+    let Some(internal_display) = displays.iter().find(|display| {
+        display.name.contains("LVDS") || display.name.contains("DisplayPort")
+    }) else {
         return Default::default();
     };
     let Some(hdmi_display) = displays
@@ -57,16 +56,28 @@ fn listmonitors() -> Result<Vec<Display>> {
 
 fn parse_listmonitors(output: &str) -> Result<Vec<Display>> {
     let mut ret = Vec::new();
-    let regex = Regex::new(
-        r"\s*\d+:\s[^\s]+\s([\d]+)/\d+x(\d+)/\d+\+(\d+)\+(\d+)\s+([A-Z0-9-]+)$",
-    )?;
+    let regex = Regex::new(concat!(
+        r"\s*",              // optional space
+        r"\d+:",             // digits
+        r"\s[^\s]+\s",       // space, not-space (name), space
+        r"([\d]+)",          // width
+        r"/\d+",             // some digits
+        r"x(\d+)",           // height
+        r"/\d+",             // digits
+        r"\+(\d+)",          // x offset
+        r"\+(\d+)",          // y offset
+        r"\s+",              // space
+        r"([A-Za-z0-9-]+)$", // name
+    ))?;
 
     for line in output.lines() {
         if line.starts_with("Monitors") {
             continue;
         }
 
-        let Some(captures) = regex.captures(line) else {
+        dbg!(line);
+
+        let Some(captures) = dbg!(regex.captures(line)) else {
             continue;
         };
         let (_, [width, height, offset_x, offset_y, name]) = captures.extract();
@@ -84,6 +95,7 @@ fn parse_listmonitors(output: &str) -> Result<Vec<Display>> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_parse() {
@@ -99,14 +111,44 @@ Monitors: 2
                 Display {
                     size: (1600, 900),
                     position: (0, 0),
-                    name: "LVDS-1".into()
+                    name: "LVDS-1".into(),
                 },
                 Display {
                     size: (1920, 1080),
                     position: (1600, 0),
-                    name: "HDMI-1".into()
-                }
-            ]
+                    name: "HDMI-1".into(),
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn test_parse_minipc() {
+        const OUTPUT: &str = "\
+ 0: +*DisplayPort-0 1920/336x1200/210+1920+0  DisplayPort-0
+ 1: +HDMI-A-0 1920/708x1080/398+0+0  HDMI-A-0
+ 2: +HDMI-A-1 1920/508x1080/286+3840+0  HDMI-A-1
+";
+
+        assert_eq!(
+            parse_listmonitors(OUTPUT).unwrap(),
+            [
+                Display {
+                    size: (1920, 1200),
+                    position: (1920, 0),
+                    name: "DisplayPort-0".into(),
+                },
+                Display {
+                    size: (1920, 1080),
+                    position: (0, 0),
+                    name: "HDMI-A-0".into(),
+                },
+                Display {
+                    size: (1920, 1080),
+                    position: (3840, 0),
+                    name: "HDMI-A-1".into(),
+                },
+            ],
         );
     }
 }
