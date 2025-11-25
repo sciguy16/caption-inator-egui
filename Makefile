@@ -9,10 +9,10 @@ T430=t430.local
 MINIPC=minipc.local
 
 
-$(ARM_BIN): src
+$(ARM_BIN): $(wildcard src/**/*)
 	cross build --release --target $(TARGET)
 
-$(BIN): src
+$(BIN): $(wildcard src/**/*)
 	cargo build --release
 
 deploy: $(ARM_BIN) wordlists config.toml
