@@ -4,3 +4,6 @@ region = "uksouth"
 key = ""
 wordlist_dir = ""
 images_dir = ""
+whisper_host = ""
+whisper_port = 443
+stt_mode = "whisper"

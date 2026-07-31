@@ -1,4 +1,7 @@
-use crate::{ControlMessage, Line, Result, RunState, Wordlist, config::Config};
+use crate::{
+    ControlMessage, Line, Result, RunState, Wordlist,
+    config::{Config, SttMode},
+};
 use std::{process::Stdio, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, BufReader},
@@ -7,6 +10,7 @@ use tokio::{
 use tokio_stream::{Stream, wrappers::ReceiverStream};
 
 mod azure_stt;
+mod whisper;
 
 const TEST_LINES: &str = include_str!("../test-data.txt");
 
@@ -107,11 +111,20 @@ async fn do_run(
     auth: &azure_speech::Auth,
     config: &Config,
 ) -> Result<RunState> {
-    azure_stt::do_run(tx, control_rx, setup_state, auth, config).await
+    match config.stt_mode {
+        SttMode::Whisper => {
+            whisper::do_run(tx, control_rx, setup_state, config).await
+        }
+        SttMode::Azure => {
+            azure_stt::do_run(tx, control_rx, setup_state, auth, config).await
+        }
+    }
 }
 
-// ffmpeg -y -f pulse -ac 2 -i default -f webm /dev/stdout
-async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
+// ffmpeg -y -f pulse -ac 1 -i default -f webm /dev/stdout
+async fn listen_from_default_input(
+    format: &str,
+) -> Result<impl Stream<Item = Vec<u8>>> {
     let (tx, rx) = mpsc::channel(10);
 
     let mut child = tokio::process::Command::new("ffmpeg")
@@ -119,12 +132,14 @@ async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
             "-y",
             "-f",
             "pulse",
+            "-ar",
+            "16k",
             "-ac",
-            "2",
+            "1",
             "-i",
             "default",
             "-f",
-            "webm",
+            format,
             "/dev/stdout",
         ])
         .stderr(Stdio::piped())
@@ -138,7 +153,7 @@ async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
 
     tokio::task::spawn(async move {
         let mut reader = BufReader::new(stdout);
-        let mut buf = [0; 1024];
+        let mut buf = vec![0; 16384];
         let mut errors = 0_usize;
         loop {
             match reader.read_exact(&mut buf).await {
@@ -155,7 +170,10 @@ async fn listen_from_default_input() -> Result<impl Stream<Item = Vec<u8>>> {
                     continue;
                 }
             }
-            if tx.send(buf.to_vec()).await.is_err() {
+            if tx.capacity() < 2 {
+                warn!("channel nearly full!");
+            }
+            if tx.send(buf.clone()).await.is_err() {
                 info!("Stream closed");
                 break;
             }

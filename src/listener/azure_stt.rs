@@ -40,7 +40,7 @@ pub async fn do_run(
         .await
         .map_err(|err| eyre!("{err:?}"))?;
 
-        let stream = super::listen_from_default_input().await?;
+        let stream = super::listen_from_default_input("webm").await?;
 
         let mut events = client
             .recognize(

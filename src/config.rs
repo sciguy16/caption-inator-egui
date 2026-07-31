@@ -13,8 +13,18 @@ pub struct Args {
 pub struct Config {
     pub region: Option<String>,
     pub key: Option<String>,
+    pub whisper_host: Option<String>,
+    pub whisper_port: Option<u16>,
     pub wordlist_dir: Option<PathBuf>,
     pub images_dir: Option<PathBuf>,
+    pub stt_mode: SttMode,
+}
+
+#[derive(Copy, Clone, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SttMode {
+    Whisper,
+    Azure,
 }
 
 impl Config {

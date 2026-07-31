@@ -9,6 +9,8 @@ use std::{
 };
 
 pub fn show(ui: &mut Ui, app: &mut crate::ControlState) {
+    ui.spacing_mut().slider_width = 500.0;
+
     ui.heading(RichText::new("Captions").size(50.0));
 
     ui.add(

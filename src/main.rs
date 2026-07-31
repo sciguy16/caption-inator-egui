@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
     let args = config::Args::parse();
     let config = config::Config::load(args.config)?;
 
-    let (tx, rx) = mpsc::channel(10);
+    let (tx, rx) = mpsc::channel(30);
     let (control_tx, control_rx) = mpsc::channel(5);
 
     info!("Starting captioninator");
@@ -154,13 +154,13 @@ async fn main() -> Result<()> {
 }
 
 fn init_tracing() {
-    use tracing_subscriber::{EnvFilter, filter::LevelFilter};
+    use tracing_subscriber::EnvFilter;
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::DEBUG.into())
-                .from_env_lossy(),
+            EnvFilter::try_from_default_env()
+                .or_else(|_| EnvFilter::try_new("info,egui_version=trace"))
+                .unwrap(),
         )
         .with_line_number(true)
         .init();
