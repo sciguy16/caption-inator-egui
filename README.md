@@ -1,3 +1,9 @@
+## TODO
+* Text box to dynamically add keywords and a way to export them
+* cache stream buffer so that server disconnection doesn't lose chunks
+  of subtitles
+  * might be doable with a stream adapter. Need to figure out whether there's
+
 ## Azure box requirements
 * HDMI output
 * Balanced jack line in
