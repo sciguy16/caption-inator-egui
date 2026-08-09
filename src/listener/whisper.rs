@@ -24,6 +24,7 @@ pub async fn do_run(
         config,
         uuid: Uuid::new_v4(),
         server_status: ServerStatus::default(),
+        last_start: -1.0,
     };
     runner.run().await
 }
@@ -35,6 +36,7 @@ struct WhisperRunner<'this> {
     config: &'this Config,
     uuid: Uuid,
     server_status: ServerStatus,
+    last_start: f32,
 }
 
 #[derive(Copy, Clone, Default, PartialEq, Eq)]
@@ -82,7 +84,8 @@ impl<'this> WhisperRunner<'this> {
             client.send(serde_json::to_string(&opts)?.into()).await?;
 
             let mut audio_stream =
-                super::listen_from_default_input("f32le").await?;
+                // super::listen_from_default_input("f32le").await?;
+                super::listen_from_default_input("s16le").await?;
 
             info!("... Starting to listen from microphone ...");
 
@@ -203,12 +206,20 @@ impl<'this> WhisperRunner<'this> {
                 continue;
             }
             trace!(?segment.completed,?segment.text);
+            let start = segment.start.parse::<f32>().unwrap_or_default();
             let line = if segment.completed {
-                Line::Recognised(segment.text)
+                if start > self.last_start {
+                    self.last_start = start;
+                    Some(Line::Recognised(segment.text))
+                } else {
+                    None
+                }
             } else {
-                Line::Recognising(segment.text)
+                Some(Line::Recognising(segment.text))
             };
-            if self.tx.try_send(line).is_err() {
+            if let Some(line) = line
+                && self.tx.try_send(line).is_err()
+            {
                 warn!("Line channel full");
             }
         }
@@ -271,17 +282,17 @@ struct ClientOptions {
     /// Segments with no speech probability above this threshold will be
     /// discarded. Defaults to 0.45.
     no_speech_thresh: f64,
-    /// Whether to clip audio with no valid segments. Defaults to False.
-    clip_audio: bool,
+    // / Whether to clip audio with no valid segments. Defaults to False.
+    // clip_audio: bool,
     /// Number of repeated outputs before considering it as a valid segment.
     /// Defaults to 10.
     same_output_threshold: i64,
     // hotwords: self.hotwords,
     // enable_diarization: self.enable_diarization,
     // max_speakers: self.max_speakers,
-    /// Optional text to provide context to the model (e.g. domain
-    /// vocabulary or names).
-    initial_prompt: Option<String>,
+    // / Optional text to provide context to the model (e.g. domain
+    // / vocabulary or names).
+    // initial_prompt: Option<String>,
     ///Optional voice-activity-detection parameters passed to the server
     /// backend.
     vad_parameters: Option<HashMap<String, String>>,
@@ -295,14 +306,14 @@ impl Default for ClientOptions {
             uid: Uuid::default(),
             language: Some("en".into()),
             task: "transcribe".into(),
-            model: "medium".into(),
-            use_vad: true,
+            model: "small.en".into(),
+            use_vad: false,
             no_speech_thresh: 0.6,
-            clip_audio: false,
+            // clip_audio: true,
             same_output_threshold: 10,
-            initial_prompt: None,
+            // initial_prompt: None,
             vad_parameters: None,
-            audio_format: "float32".into(),
+            audio_format: "int16".into(),
         }
     }
 }
@@ -324,7 +335,6 @@ struct ReceivedMessage {
 
 #[derive(Debug, Deserialize)]
 struct Segment {
-    #[expect(unused)]
     start: String,
     #[expect(unused)]
     end: String,
