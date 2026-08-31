@@ -570,8 +570,6 @@ dependencies = [
 [[package]]
 name = "azure-speech"
 version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fabb161834638ebb98698e15d1eb7957a1266873330bb29dc12ba26e19c945f"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -1290,11 +1288,14 @@ dependencies = [
  "egui_extras",
  "env_logger",
  "futures",
+ "hex",
+ "hex-literal",
  "image",
  "pretty_assertions",
  "regex",
  "serde",
  "serde_json",
+ "tinyogg",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
@@ -2030,6 +2031,12 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hex-literal"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
 
 [[package]]
 name = "hexf-parse"
@@ -4414,6 +4421,12 @@ dependencies = [
  "bytemuck",
  "strict-num",
 ]
+
+[[package]]
+name = "tinyogg"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1666ab155a04d99c7bccf98d4634445c121bb220dfb04b7cedb2daa05abb45f2"
 
 [[package]]
 name = "tinystr"

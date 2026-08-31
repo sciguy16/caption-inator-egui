@@ -10,6 +10,8 @@ use tokio::{
 use tokio_stream::{Stream, wrappers::ReceiverStream};
 
 mod azure_stt;
+mod ffmpeg_stream;
+mod sample_buffer;
 mod whisper;
 
 const TEST_LINES: &str = include_str!("../test-data.txt");

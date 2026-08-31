@@ -1,3 +1,4 @@
+use super::ffmpeg_stream::FfmpegBuffer;
 use crate::{
     ControlMessage, Line, Result, RunState, config::Config,
     listener::SetupState,
@@ -6,6 +7,13 @@ use color_eyre::eyre::eyre;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
+
+// Maximum azure speech session length is 240 minutes, so force a
+// reconnection after 239 minutes
+// https://learn.microsoft.com/en-us/azure/ai-services/speech-service/ \
+//   speech-services-quotas-and-limits \
+//   #real-time-speech-to-text-and-speech-translation
+const AZURE_SESSION_LENGTH: Duration = Duration::from_mins(239);
 
 // spx recognize --microphone --phrases @/tmp/words.txt --language en-GB
 pub async fn do_run(
@@ -32,7 +40,12 @@ pub async fn do_run(
         azure_config = azure_config.set_phrases(wordlist);
     }
 
+    info!("Start ffmpeg to listen to microphone");
+    let ffmpeg = FfmpegBuffer::listen_from_default_input("opus").await?;
+
     'reconnection: loop {
+        info!("Connect to azure speech API");
+
         let client = azure_speech::recognizer::Client::connect(
             auth.clone(),
             azure_config.clone(),
@@ -40,12 +53,15 @@ pub async fn do_run(
         .await
         .map_err(|err| eyre!("{err:?}"))?;
 
-        let stream = super::listen_from_default_input("webm").await?;
+        let stream = ffmpeg.subscribe().await?;
+
+        let time_limit_test = tokio::time::sleep(AZURE_SESSION_LENGTH);
+        tokio::pin!(time_limit_test);
 
         let mut events = client
             .recognize(
                 stream,
-                azure_speech::recognizer::AudioFormat::WebmOpus,
+                azure_speech::recognizer::AudioFormat::Opus,
                 azure_speech::recognizer::AudioDevice::new(
                     azure_speech::recognizer::SourceType::Microphones,
                 ),
@@ -53,10 +69,12 @@ pub async fn do_run(
             .await
             .map_err(|err| eyre!("{err:?}"))?;
 
-        tracing::info!("... Starting to listen from microphone ...");
-
         let new_state = loop {
             tokio::select! {
+                _ = &mut time_limit_test => {
+                    trace!("Time limit test");
+                    break RunState::Running;
+                }
                 event = events.next() => {
                     if let Err(err) = handle_event(event, tx).await {
                         error!("{err:?}");
@@ -90,7 +108,7 @@ pub async fn do_run(
             return Ok(new_state);
         }
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
         info!("Reconnecting");
     }
 
@@ -116,13 +134,25 @@ async fn handle_event(
     let Some(event) = event else {
         return Ok(());
     };
-    // dbg!(&event);
     let line = match event? {
         Event::Recognized(_, result, _, _, _) => {
+            trace!("Line");
             Some(Line::Recognised(result.text))
         }
         Event::Recognizing(_, result, _, _, _) => {
             Some(Line::Recognising(result.text))
+        }
+        Event::SessionStarted(id) => {
+            info!("Session started: {id}");
+            None
+        }
+        Event::SessionEnded(id) => {
+            info!("Session Ended: {id}");
+            None
+        }
+        Event::StartDetected(_, offset) => {
+            info!("StartDetected(offset {offset})");
+            None
         }
         event => {
             info!("Unhandled event: {event:?}");

@@ -16,6 +16,10 @@ use tokio::sync::{mpsc, oneshot};
 #[macro_use]
 extern crate tracing;
 
+#[cfg(test)]
+#[macro_use(assert_eq)]
+extern crate pretty_assertions;
+
 mod config;
 mod gui;
 mod listener;
@@ -159,7 +163,11 @@ fn init_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .or_else(|_| EnvFilter::try_new("info,egui_version=trace"))
+                .or_else(|_| {
+                    EnvFilter::try_new(
+                        "info,egui_version=trace,tokio_websockets=trace",
+                    )
+                })
                 .unwrap(),
         )
         .with_line_number(true)

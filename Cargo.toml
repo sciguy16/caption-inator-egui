@@ -3,6 +3,9 @@ name = "egui-version"
 version = "0.1.0"
 edition = "2024"
 
+[patch.crates-io]
+azure-speech = { path = "../azure-speech-sdk-rs" }
+
 [dependencies]
 azure-speech = "0.10.0"
 catppuccin-egui = { version = "5.7.0", default-features = false, features = ["egui33"] }
@@ -13,10 +16,12 @@ egui = { version = "0.33.2", features = ["persistence"] }
 egui_extras = { version = "0.33.2", features = ["file", "image"] }
 env_logger = "0.11.8"
 futures = "0.3.33"
+hex-literal = "1.1.0"
 image = "0.25.8"
 regex = "1.11.2"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
+tinyogg = "0.0.6"
 tokio = { version = "1.47.0", features = ["rt", "rt-multi-thread", "net", "sync", "full"] }
 tokio-stream = "0.1.17"
 tokio-tungstenite = "0.30.0"
@@ -26,4 +31,5 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 uuid = { version = "1.24.0", features = ["serde"] }
 
 [dev-dependencies]
+hex = "0.4.3"
 pretty_assertions = "1.4.1"
