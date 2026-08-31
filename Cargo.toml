@@ -3,8 +3,8 @@ name = "egui-version"
 version = "0.1.0"
 edition = "2024"
 
-[patch.crates-io]
-azure-speech = { path = "../azure-speech-sdk-rs" }
+# [patch.crates-io]
+# azure-speech = { path = "../azure-speech-sdk-rs" }
 
 [dependencies]
 azure-speech = "0.10.0"

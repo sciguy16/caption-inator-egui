@@ -570,6 +570,8 @@ dependencies = [
 [[package]]
 name = "azure-speech"
 version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fabb161834638ebb98698e15d1eb7957a1266873330bb29dc12ba26e19c945f"
 dependencies = [
  "async-trait",
  "futures-util",
